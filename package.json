@@ -8,5 +8,8 @@
     "lint": "npm --prefix frontend run lint",
     "preview": "npm --prefix frontend run preview",
     "install:frontend": "npm --prefix frontend install"
+  },
+  "devDependencies": {
+    "typescript": "^6.0.3"
   }
 }
