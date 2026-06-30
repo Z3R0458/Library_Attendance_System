@@ -17,6 +17,11 @@ SET
   file_size_limit = EXCLUDED.file_size_limit,
   allowed_mime_types = EXCLUDED.allowed_mime_types;
 
+DROP POLICY IF EXISTS "Anyone can view student profile pictures" ON storage.objects;
+DROP POLICY IF EXISTS "Anyone can upload student profile pictures" ON storage.objects;
+DROP POLICY IF EXISTS "Admins can update student profile pictures" ON storage.objects;
+DROP POLICY IF EXISTS "Admins can delete student profile pictures" ON storage.objects;
+
 CREATE POLICY "Anyone can view student profile pictures"
   ON storage.objects FOR SELECT
   TO anon, authenticated

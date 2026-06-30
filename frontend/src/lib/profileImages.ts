@@ -2,11 +2,15 @@ import { supabase } from './supabase';
 
 export const PROFILE_IMAGE_BUCKET = 'student-profile-pictures';
 
-const MAX_SIDE = 720;
-const JPEG_QUALITY = 0.78;
+const MAX_SIDE = 640;
+const JPEG_QUALITY = 0.72;
+const IMAGE_EXTENSION_PATTERN = /\.(avif|gif|heic|heif|jpe?g|png|webp)$/i;
 
 export function validateProfileImage(file: File): string | null {
-  if (!file.type.startsWith('image/')) {
+  const hasImageType = file.type.startsWith('image/');
+  const hasImageExtension = IMAGE_EXTENSION_PATTERN.test(file.name);
+
+  if (!hasImageType && !hasImageExtension) {
     return 'Please upload a valid image file.';
   }
 
@@ -52,6 +56,11 @@ export async function resizeProfileImage(file: File): Promise<Blob> {
   canvas.height = height;
   ctx.drawImage(image, 0, 0, width, height);
 
+  if (!canvas.toBlob) {
+    const response = await fetch(canvas.toDataURL('image/jpeg', JPEG_QUALITY));
+    return response.blob();
+  }
+
   return new Promise((resolve, reject) => {
     canvas.toBlob(
       (blob) => {
@@ -68,13 +77,51 @@ function safePathPart(value: string): string {
   return value.trim().replace(/[^a-z0-9_-]+/gi, '-').replace(/^-+|-+$/g, '') || 'student';
 }
 
+function createUploadId(): string {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+    return crypto.randomUUID();
+  }
+
+  return `${Date.now()}-${Math.random().toString(36).slice(2, 12)}`;
+}
+
+function createUploadFile(blob: Blob, studentId: string): Blob {
+  const filename = `${safePathPart(studentId)}-profile.jpg`;
+
+  try {
+    return new File([blob], filename, {
+      type: 'image/jpeg',
+      lastModified: Date.now(),
+    });
+  } catch {
+    return new Blob([blob], { type: 'image/jpeg' });
+  }
+}
+
+export function getProfileImageErrorMessage(error: unknown): string {
+  if (error instanceof Error) {
+    if (error.message === 'Failed to fetch') {
+      return 'Unable to upload the profile picture. Please check your internet connection, then make sure the Supabase Storage bucket and deployed Vercel environment variables are configured.';
+    }
+
+    if (error.message.includes('Unable to read')) {
+      return 'Unable to read this image on your phone. Please choose a JPG, PNG, or WebP photo, or take a new photo with the Camera option.';
+    }
+
+    return error.message;
+  }
+
+  return 'Unable to upload the selected profile picture.';
+}
+
 export async function uploadStudentProfileImage(file: File, studentId: string): Promise<string> {
   const compressed = await resizeProfileImage(file);
-  const path = `${safePathPart(studentId)}/${Date.now()}-${crypto.randomUUID()}.jpg`;
+  const uploadFile = createUploadFile(compressed, studentId);
+  const path = `${safePathPart(studentId)}/${createUploadId()}.jpg`;
 
   const { error } = await supabase.storage
     .from(PROFILE_IMAGE_BUCKET)
-    .upload(path, compressed, {
+    .upload(path, uploadFile, {
       contentType: 'image/jpeg',
       upsert: false,
     });

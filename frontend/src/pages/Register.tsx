@@ -6,7 +6,11 @@ import { Alert } from '../components/ui/Alert';
 import { getSupabaseErrorMessage, supabase } from '../lib/supabase';
 import { buildQrPayload, COURSE_OPTIONS, YEAR_LEVELS } from '../lib/constants';
 import { downloadSvgAsPng } from '../lib/qrDownload';
-import { uploadStudentProfileImage, validateProfileImage } from '../lib/profileImages';
+import {
+  getProfileImageErrorMessage,
+  uploadStudentProfileImage,
+  validateProfileImage,
+} from '../lib/profileImages';
 import {
   escapeLikePattern,
   isDuplicateStudentNameError,
@@ -122,7 +126,13 @@ export default function Register() {
         return;
       }
 
-      const profilePictureUrl = await uploadStudentProfileImage(profileImage, studentId);
+      let profilePictureUrl = '';
+      try {
+        profilePictureUrl = await uploadStudentProfileImage(profileImage, studentId);
+      } catch (error) {
+        setError(getProfileImageErrorMessage(error));
+        return;
+      }
 
       const { data: newStudent, error: insertError } = await supabase
         .from('students')
@@ -250,11 +260,12 @@ export default function Register() {
                   id="profile_picture"
                   type="file"
                   className="form-control"
-                  accept="image/*"
-                  capture="user"
+                  accept="image/jpeg,image/png,image/webp,image/*"
                   onChange={handleProfileImageChange}
-                  required
                 />
+                <p className="form-help">
+                  Choose a photo from Gallery, Photos, Files, or Camera when your phone asks.
+                </p>
                 {profilePreviewUrl && (
                   <div className="profile-upload-preview">
                     <img src={profilePreviewUrl} alt="Profile preview" />

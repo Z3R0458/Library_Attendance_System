@@ -5,7 +5,11 @@ import { PageLayout } from '../../components/layout/Navbar';
 import { Alert } from '../../components/ui/Alert';
 import { supabase } from '../../lib/supabase';
 import { COURSE_OPTIONS, YEAR_LEVELS } from '../../lib/constants';
-import { uploadStudentProfileImage, validateProfileImage } from '../../lib/profileImages';
+import {
+  getProfileImageErrorMessage,
+  uploadStudentProfileImage,
+  validateProfileImage,
+} from '../../lib/profileImages';
 import {
   escapeLikePattern,
   isDuplicateStudentNameError,
@@ -82,7 +86,11 @@ export default function AdminStudents() {
       queryClient.invalidateQueries({ queryKey: ['students'] });
     },
     onError: (err) => {
-      setError(isDuplicateStudentNameError(err) ? 'Student name already exists.' : err.message);
+      setError(
+        isDuplicateStudentNameError(err)
+          ? 'Student name already exists.'
+          : getProfileImageErrorMessage(err),
+      );
     },
   });
 
@@ -237,7 +245,7 @@ function StudentRow({
           )}
           <label className="btn btn-secondary file-button">
             Update
-            <input type="file" accept="image/*" onChange={handleProfileImageChange} />
+            <input type="file" accept="image/jpeg,image/png,image/webp,image/*" onChange={handleProfileImageChange} />
           </label>
           {imageError && <span className="field-error">{imageError}</span>}
         </div>
