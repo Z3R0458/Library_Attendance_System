@@ -11,12 +11,12 @@ const SCAN_MODES: Record<ScanAction, { label: string; result: string; help: stri
   time_in: {
     label: 'Login',
     result: 'Successfully Logged In',
-    help: 'Choose Login when the student is entering the library.',
+    help: 'Scan the student QR code to automatically log the student in.',
   },
   time_out: {
     label: 'Logout',
     result: 'Successfully Logged Out',
-    help: 'Choose Logout when the student is leaving the library.',
+    help: 'Scan the student QR code to automatically log the student out.',
   },
 };
 
@@ -54,8 +54,7 @@ function formatDuration(start?: string | null, end?: string | null) {
   return `${minutes} min`;
 }
 
-export default function Scan() {
-  const [scanAction, setScanAction] = useState<ScanAction>('time_in');
+export default function Scan({ scanAction = 'time_in' }: { scanAction?: ScanAction }) {
   const [selectedPurpose, setSelectedPurpose] = useState<(typeof PURPOSES)[number]>(PURPOSES[0]);
   const [verifiedStudent, setVerifiedStudent] = useState<Student | null>(null);
   const [verifiedAt, setVerifiedAt] = useState<Date | null>(null);
@@ -74,7 +73,7 @@ export default function Scan() {
 
   const handleScan = useCallback(
     async (token: string) => {
-      if (processScan.isPending || verifiedStudent) return;
+      if (processScan.isPending || paused) return;
 
       setPaused(true);
       setResult(null);
@@ -98,8 +97,47 @@ export default function Scan() {
           return;
         }
 
-        setVerifiedStudent(data as Student);
+        const student = data as Student;
+        setVerifiedStudent(student);
         setVerifiedAt(new Date());
+
+        const scanResult = await processScan.mutateAsync({
+          qrToken: student.qr_token,
+          action: scanAction,
+        });
+
+        let nextResult = scanResult;
+
+        if (scanResult.success && scanResult.action === 'time_in' && scanResult.attendance?.id) {
+          try {
+            const { data, error } = await supabase.rpc('update_attendance_purpose', {
+              p_attendance_id: scanResult.attendance.id,
+              p_purpose: selectedPurpose,
+            });
+
+            if (error) {
+              setPurposeError(error.message);
+            } else {
+              const response = data as { success?: boolean; message?: string };
+              if (!response.success) {
+                setPurposeError(response.message ?? 'Unable to save purpose.');
+              } else {
+                nextResult = {
+                  ...scanResult,
+                  message: `${scanResult.message}. Purpose: ${selectedPurpose}`,
+                  attendance: { ...scanResult.attendance, purpose: selectedPurpose },
+                };
+              }
+            }
+          } catch (error) {
+            setPurposeError(
+              getSupabaseErrorMessage(error, 'Unable to save purpose. Check your Supabase connection.'),
+            );
+          }
+        }
+
+        setResult(nextResult);
+        window.setTimeout(clearScan, nextResult.success ? 6500 : 4500);
       } catch (error) {
         setResult({
           success: false,
@@ -109,84 +147,21 @@ export default function Scan() {
         window.setTimeout(clearScan, 3000);
       }
     },
-    [clearScan, processScan.isPending, verifiedStudent],
+    [clearScan, paused, processScan, scanAction, selectedPurpose],
   );
-
-  const recordAttendance = async () => {
-    if (!verifiedStudent) return;
-
-    setPurposeError('');
-    const scanResult = await processScan.mutateAsync({
-      qrToken: verifiedStudent.qr_token,
-      action: scanAction,
-    });
-
-    let nextResult = scanResult;
-
-    if (scanResult.success && scanResult.action === 'time_in' && scanResult.attendance?.id) {
-      try {
-        const { data, error } = await supabase.rpc('update_attendance_purpose', {
-          p_attendance_id: scanResult.attendance.id,
-          p_purpose: selectedPurpose,
-        });
-
-        if (error) {
-          setPurposeError(error.message);
-        } else {
-          const response = data as { success?: boolean; message?: string };
-          if (!response.success) {
-            setPurposeError(response.message ?? 'Unable to save purpose.');
-          } else {
-            nextResult = {
-              ...scanResult,
-              message: `${scanResult.message}. Purpose: ${selectedPurpose}`,
-              attendance: { ...scanResult.attendance, purpose: selectedPurpose },
-            };
-          }
-        }
-      } catch (error) {
-        setPurposeError(
-          getSupabaseErrorMessage(error, 'Unable to save purpose. Check your Supabase connection.'),
-        );
-      }
-    }
-
-    setResult(nextResult);
-
-    if (nextResult.success) {
-      window.setTimeout(clearScan, 6500);
-    }
-  };
 
   return (
     <PageLayout>
       <div className="container scan-page">
         <section className="card scan-card">
           <div className="card-header scan-card-header">
-            <h2>QR Attendance Scanner</h2>
-            <p>Verify student identity before recording Login or Logout</p>
+            <h2>{SCAN_MODES[scanAction].label} Scanner</h2>
+            <p>{SCAN_MODES[scanAction].help}</p>
           </div>
           <div className="card-body">
-            <div className="scan-mode-control" role="tablist" aria-label="Scanner action">
-              {Object.entries(SCAN_MODES).map(([action, item]) => (
-                <button
-                  key={action}
-                  type="button"
-                  role="tab"
-                  aria-selected={scanAction === action}
-                  className={`scan-mode-button${scanAction === action ? ' active' : ''}`}
-                  disabled={processScan.isPending || Boolean(verifiedStudent)}
-                  onClick={() => {
-                    setScanAction(action as ScanAction);
-                    clearScan();
-                  }}
-                >
-                  {item.label}
-                </button>
-              ))}
-            </div>
-
-            <p className="scan-mode-help">{SCAN_MODES[scanAction].help}</p>
+            <p className="scan-mode-help">
+              Mode: <strong>{SCAN_MODES[scanAction].label}</strong>. Attendance records automatically after a successful scan.
+            </p>
 
             {scanAction === 'time_in' && !verifiedStudent && (
               <div className="form-group scan-purpose-select">
@@ -224,8 +199,6 @@ export default function Scan() {
                 selectedPurpose={selectedPurpose}
                 result={result}
                 recording={processScan.isPending}
-                onCancel={clearScan}
-                onConfirm={recordAttendance}
               />
             )}
 
@@ -238,7 +211,7 @@ export default function Scan() {
 
             <div style={{ marginTop: '1rem' }}>
               <Alert type="info">
-                <strong>Staff workflow:</strong> Scan the QR code, visually verify the profile picture, then record the selected action.
+                <strong>Automatic workflow:</strong> Scan once. The system validates the QR code, displays the student profile, and records {SCAN_MODES[scanAction].label} immediately.
               </Alert>
             </div>
           </div>
@@ -255,8 +228,6 @@ function VerificationCard({
   selectedPurpose,
   result,
   recording,
-  onCancel,
-  onConfirm,
 }: {
   student: Student;
   verifiedAt: Date;
@@ -264,8 +235,6 @@ function VerificationCard({
   selectedPurpose: string;
   result: ScanResult | null;
   recording: boolean;
-  onCancel: () => void;
-  onConfirm: () => void;
 }) {
   const isRecorded = Boolean(result?.success);
   const isError = Boolean(result && !result.success);
@@ -273,7 +242,9 @@ function VerificationCard({
     ? SCAN_MODES[scanAction].result
     : isError
       ? result?.message
-      : 'Ready for staff verification';
+      : recording
+        ? 'Recording attendance...'
+        : 'Validated. Recording attendance...';
 
   return (
     <div className={`verification-card${isRecorded ? ' recorded' : ''}${isError ? ' failed' : ''}`}>
@@ -351,16 +322,7 @@ function VerificationCard({
           </div>
         </dl>
 
-        {!isRecorded && (
-          <div className="verification-actions">
-            <button type="button" className="btn btn-secondary" disabled={recording} onClick={onCancel}>
-              Cancel
-            </button>
-            <button type="button" className="btn btn-maroon" disabled={recording} onClick={onConfirm}>
-              {recording ? 'Recording...' : `Record ${SCAN_MODES[scanAction].label}`}
-            </button>
-          </div>
-        )}
+        {recording && <p className="verification-note">Please wait. Attendance is being recorded automatically.</p>}
       </div>
     </div>
   );

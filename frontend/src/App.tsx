@@ -41,12 +41,14 @@ export default function App() {
 
               <Route element={<AdminRoute />}>
                 <Route path="/admin/dashboard" element={<AdminDashboard />} />
-                <Route path="/admin/scan" element={<Scan />} />
+                <Route path="/admin/scan" element={<Navigate to="/admin/scan/login" replace />} />
+                <Route path="/admin/scan/login" element={<Scan scanAction="time_in" />} />
+                <Route path="/admin/scan/logout" element={<Scan scanAction="time_out" />} />
                 <Route path="/admin/students" element={<AdminStudents />} />
                 <Route path="/admin/history" element={<AttendanceHistory />} />
                 <Route path="/admin/reports" element={<AdminReports />} />
                 <Route path="/admin/export" element={<AdminExport />} />
-                <Route path="/scan" element={<Navigate to="/admin/scan" replace />} />
+                <Route path="/scan" element={<Navigate to="/admin/scan/login" replace />} />
               </Route>
             </Routes>
           </Suspense>

@@ -5,7 +5,7 @@ import { PageLayout } from '../components/layout/Navbar';
 import { Alert } from '../components/ui/Alert';
 import { getSupabaseErrorMessage, supabase } from '../lib/supabase';
 import { buildQrPayload, COURSE_OPTIONS, YEAR_LEVELS } from '../lib/constants';
-import { downloadSvgAsPng } from '../lib/qrDownload';
+import { createSvgPngObjectUrl } from '../lib/qrDownload';
 import {
   getProfileImageErrorMessage,
   uploadStudentProfileImage,
@@ -23,6 +23,7 @@ export default function Register() {
   const [error, setError] = useState('');
   const [registeredStudent, setRegisteredStudent] = useState<Student | null>(null);
   const [showQrModal, setShowQrModal] = useState(false);
+  const [qrDownloadUrl, setQrDownloadUrl] = useState('');
   const [profileImage, setProfileImage] = useState<File | null>(null);
   const [profilePreviewUrl, setProfilePreviewUrl] = useState('');
   const [form, setForm] = useState({
@@ -69,6 +70,7 @@ export default function Register() {
     setError('');
     setRegisteredStudent(null);
     setShowQrModal(false);
+    setQrDownloadUrl('');
     setLoading(true);
 
     const { student_id, name, course, year_level } = form;
@@ -164,6 +166,37 @@ export default function Register() {
       setLoading(false);
     }
   };
+
+  useEffect(() => {
+    let nextUrl = '';
+    let cancelled = false;
+
+    setQrDownloadUrl('');
+
+    if (!registeredStudent || !showQrModal) return undefined;
+
+    const frame = window.requestAnimationFrame(() => {
+      void createSvgPngObjectUrl(
+        document.getElementById('registered-student-qr') as unknown as SVGElement | null,
+      )
+        .then((url) => {
+          if (cancelled || !url) {
+            if (url) URL.revokeObjectURL(url);
+            return;
+          }
+
+          nextUrl = url;
+          setQrDownloadUrl(url);
+        })
+        .catch(() => setQrDownloadUrl(''));
+    });
+
+    return () => {
+      cancelled = true;
+      window.cancelAnimationFrame(frame);
+      if (nextUrl) URL.revokeObjectURL(nextUrl);
+    };
+  }, [registeredStudent, showQrModal]);
 
   return (
     <PageLayout>
@@ -328,19 +361,19 @@ export default function Register() {
                 {registeredStudent.student_id} | {registeredStudent.course} | Year{' '}
                 {registeredStudent.year_level}
               </p>
-              <button
-                type="button"
+              <a
+                href={qrDownloadUrl || undefined}
+                download={`qr-${registeredStudent.student_id}.png`}
                 className="btn btn-maroon"
-                style={{ marginTop: '1rem' }}
-                onClick={() =>
-                  downloadSvgAsPng(
-                    document.getElementById('registered-student-qr') as SVGElement | null,
-                    `qr-${registeredStudent.student_id}.png`,
-                  )
-                }
+                aria-disabled={!qrDownloadUrl}
+                style={{
+                  marginTop: '1rem',
+                  pointerEvents: qrDownloadUrl ? 'auto' : 'none',
+                  opacity: qrDownloadUrl ? 1 : 0.65,
+                }}
               >
-                Download QR Code
-              </button>
+                {qrDownloadUrl ? 'Download QR Code' : 'Preparing QR Code...'}
+              </a>
             </div>
           </div>
         </div>

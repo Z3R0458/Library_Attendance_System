@@ -5,7 +5,7 @@ import { PageLayout } from '../components/layout/Navbar';
 import { Alert } from '../components/ui/Alert';
 import { supabase } from '../lib/supabase';
 import { buildQrPayload } from '../lib/constants';
-import { downloadSvgAsPng } from '../lib/qrDownload';
+import { createSvgPngObjectUrl } from '../lib/qrDownload';
 import type { Student } from '../types';
 
 export default function MyQR() {
@@ -17,6 +17,7 @@ export default function MyQR() {
   const [student, setStudent] = useState<Student | null>(null);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [qrDownloadUrl, setQrDownloadUrl] = useState('');
 
   const lookup = async (e?: FormEvent) => {
     e?.preventDefault();
@@ -25,6 +26,7 @@ export default function MyQR() {
     setLoading(true);
     setError('');
     setStudent(null);
+    setQrDownloadUrl('');
 
     const { data, error: fetchError } = await supabase
       .from('students')
@@ -49,11 +51,34 @@ export default function MyQR() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const downloadQR = () => {
-    const svg = document.getElementById('student-qr');
-    if (!svg || !student) return;
-    downloadSvgAsPng(svg as unknown as SVGElement, `qr-${student.student_id}.png`);
-  };
+  useEffect(() => {
+    let nextUrl = '';
+    let cancelled = false;
+
+    setQrDownloadUrl('');
+
+    if (!student) return undefined;
+
+    const frame = window.requestAnimationFrame(() => {
+      void createSvgPngObjectUrl(document.getElementById('student-qr') as unknown as SVGElement | null)
+        .then((url) => {
+          if (cancelled || !url) {
+            if (url) URL.revokeObjectURL(url);
+            return;
+          }
+
+          nextUrl = url;
+          setQrDownloadUrl(url);
+        })
+        .catch(() => setQrDownloadUrl(''));
+    });
+
+    return () => {
+      cancelled = true;
+      window.cancelAnimationFrame(frame);
+      if (nextUrl) URL.revokeObjectURL(nextUrl);
+    };
+  }, [student]);
 
   return (
     <PageLayout>
@@ -106,14 +131,19 @@ export default function MyQR() {
                 <p style={{ color: 'var(--text-muted)', margin: 0 }}>
                   {student.student_id} | {student.course} | Year {student.year_level}
                 </p>
-                <button
-                  type="button"
+                <a
+                  href={qrDownloadUrl || undefined}
+                  download={student ? `qr-${student.student_id}.png` : undefined}
                   className="btn btn-maroon"
-                  style={{ marginTop: '1rem' }}
-                  onClick={downloadQR}
+                  aria-disabled={!qrDownloadUrl}
+                  style={{
+                    marginTop: '1rem',
+                    pointerEvents: qrDownloadUrl ? 'auto' : 'none',
+                    opacity: qrDownloadUrl ? 1 : 0.65,
+                  }}
                 >
-                  Download QR Code
-                </button>
+                  {qrDownloadUrl ? 'Download QR Code' : 'Preparing QR Code...'}
+                </a>
               </div>
             )}
           </div>

@@ -1,7 +1,3 @@
-function isMobileBrowser() {
-  return /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
-}
-
 function canvasToBlob(canvas: HTMLCanvasElement): Promise<Blob> {
   return new Promise((resolve, reject) => {
     canvas.toBlob((blob) => {
@@ -11,51 +7,8 @@ function canvasToBlob(canvas: HTMLCanvasElement): Promise<Blob> {
   });
 }
 
-function triggerBrowserDownload(blob: Blob, filename: string) {
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-
-  a.href = url;
-  a.download = filename;
-  a.target = '_blank';
-  a.rel = 'noopener';
-  document.body.appendChild(a);
-  a.click();
-  a.remove();
-
-  window.setTimeout(() => URL.revokeObjectURL(url), 30_000);
-}
-
-function openImageFallback(blob: Blob) {
-  const url = URL.createObjectURL(blob);
-  const opened = window.open(url, '_blank', 'noopener,noreferrer');
-
-  if (!opened) {
-    window.location.href = url;
-  }
-
-  window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
-}
-
-async function shareOnMobile(blob: Blob, filename: string) {
-  const file = new File([blob], filename, { type: 'image/png' });
-  const nav = navigator as Navigator & {
-    canShare?: (data: ShareData) => boolean;
-    share?: (data: ShareData) => Promise<void>;
-  };
-
-  if (!nav.share || !nav.canShare?.({ files: [file] })) return false;
-
-  await nav.share({
-    files: [file],
-    title: 'Student QR Code',
-    text: 'Save or share your library QR code.',
-  });
-  return true;
-}
-
-export async function downloadSvgAsPng(svg: SVGElement | null, filename: string) {
-  if (!svg) return;
+export async function createSvgPngBlob(svg: SVGElement | null): Promise<Blob | null> {
+  if (!svg) return null;
 
   const svgData = new XMLSerializer().serializeToString(svg);
   const svgBlob = new Blob([svgData], { type: 'image/svg+xml;charset=utf-8' });
@@ -84,22 +37,29 @@ export async function downloadSvgAsPng(svg: SVGElement | null, filename: string)
     ctx.fillRect(0, 0, canvas.width, canvas.height);
     ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
 
-    const pngBlob = await canvasToBlob(canvas);
-
-    if (isMobileBrowser()) {
-      try {
-        const shared = await shareOnMobile(pngBlob, filename);
-        if (shared) return;
-      } catch {
-        // If the user cancels or sharing is unavailable, fall back to opening the image.
-      }
-
-      openImageFallback(pngBlob);
-      return;
-    }
-
-    triggerBrowserDownload(pngBlob, filename);
+    return canvasToBlob(canvas);
   } finally {
     URL.revokeObjectURL(svgUrl);
   }
+}
+
+export async function createSvgPngObjectUrl(svg: SVGElement | null): Promise<string | null> {
+  const blob = await createSvgPngBlob(svg);
+  return blob ? URL.createObjectURL(blob) : null;
+}
+
+export async function downloadSvgAsPng(svg: SVGElement | null, filename: string) {
+  const blob = await createSvgPngBlob(svg);
+  if (!blob) return;
+
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+
+  window.setTimeout(() => URL.revokeObjectURL(url), 30_000);
 }
