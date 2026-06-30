@@ -1,5 +1,4 @@
 import { useCallback, useState } from 'react';
-import { PageLayout } from '../components/layout/Navbar';
 import { QRScanner } from '../components/scanner/QRScanner';
 import { Alert } from '../components/ui/Alert';
 import { getSupabaseErrorMessage, supabase } from '../lib/supabase';
@@ -54,7 +53,8 @@ function formatDuration(start?: string | null, end?: string | null) {
   return `${minutes} min`;
 }
 
-export default function Scan({ scanAction = 'time_in' }: { scanAction?: ScanAction }) {
+export default function Scan() {
+  const [scanAction, setScanAction] = useState<ScanAction>('time_in');
   const [selectedPurpose, setSelectedPurpose] = useState<(typeof PURPOSES)[number]>(PURPOSES[0]);
   const [verifiedStudent, setVerifiedStudent] = useState<Student | null>(null);
   const [verifiedAt, setVerifiedAt] = useState<Date | null>(null);
@@ -151,73 +151,90 @@ export default function Scan({ scanAction = 'time_in' }: { scanAction?: ScanActi
   );
 
   return (
-    <PageLayout>
-      <div className="container scan-page">
-        <section className="card scan-card">
-          <div className="card-header scan-card-header">
-            <h2>{SCAN_MODES[scanAction].label} Scanner</h2>
-            <p>{SCAN_MODES[scanAction].help}</p>
+    <main className="scanner-kiosk-page">
+      <section className="card scanner-kiosk-card">
+        <div className="card-header scanner-kiosk-header">
+          <h2>{SCAN_MODES[scanAction].label} Scanner</h2>
+          <p>{SCAN_MODES[scanAction].help}</p>
+        </div>
+        <div className="card-body">
+          <div className="scan-mode-control" aria-label="Scanner mode">
+            {Object.entries(SCAN_MODES).map(([action, item]) => (
+              <button
+                key={action}
+                type="button"
+                className={`scan-mode-button${scanAction === action ? ' active' : ''}`}
+                disabled={processScan.isPending || paused}
+                onClick={() => {
+                  setScanAction(action as ScanAction);
+                  clearScan();
+                }}
+              >
+                {item.label}
+              </button>
+            ))}
           </div>
-          <div className="card-body">
-            <p className="scan-mode-help">
-              Mode: <strong>{SCAN_MODES[scanAction].label}</strong>. Attendance records automatically after a successful scan.
-            </p>
 
-            {scanAction === 'time_in' && !verifiedStudent && (
-              <div className="form-group scan-purpose-select">
-                <label className="form-label" htmlFor="scan-purpose">Purpose of Visit</label>
-                <select
-                  id="scan-purpose"
-                  className="form-control"
-                  value={selectedPurpose}
-                  onChange={(e) => setSelectedPurpose(e.target.value as (typeof PURPOSES)[number])}
-                >
-                  {PURPOSES.map((purpose) => (
-                    <option key={purpose} value={purpose}>
-                      {purpose}
-                    </option>
-                  ))}
-                </select>
-              </div>
-            )}
+          <p className="scan-mode-help">
+            Mode: <strong>{SCAN_MODES[scanAction].label}</strong>. Attendance records automatically after a successful scan.
+          </p>
 
-            {processScan.isPending && <Alert type="info">Recording attendance...</Alert>}
-            {purposeError && <Alert type="error">{purposeError}</Alert>}
+          {scanAction === 'time_in' && !verifiedStudent && (
+            <div className="form-group scan-purpose-select">
+              <label className="form-label" htmlFor="scan-purpose">Purpose of Visit</label>
+              <select
+                id="scan-purpose"
+                className="form-control"
+                value={selectedPurpose}
+                onChange={(e) => setSelectedPurpose(e.target.value as (typeof PURPOSES)[number])}
+              >
+                {PURPOSES.map((purpose) => (
+                  <option key={purpose} value={purpose}>
+                    {purpose}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
 
-            {result && !verifiedStudent && (
-              <div className="scan-result error">
-                <strong>Scan failed</strong>
-                <p style={{ margin: '0.5rem 0 0' }}>{result.message}</p>
-              </div>
-            )}
+          {processScan.isPending && <Alert type="info">Recording attendance...</Alert>}
+          {purposeError && <Alert type="error">{purposeError}</Alert>}
 
-            {verifiedStudent && verifiedAt && (
-              <VerificationCard
-                student={verifiedStudent}
-                verifiedAt={verifiedAt}
-                scanAction={scanAction}
-                selectedPurpose={selectedPurpose}
-                result={result}
-                recording={processScan.isPending}
-              />
-            )}
+          {result && !verifiedStudent && (
+            <div className="scan-result error">
+              <strong>Scan failed</strong>
+              <p style={{ margin: '0.5rem 0 0' }}>{result.message}</p>
+            </div>
+          )}
 
+          {verifiedStudent && verifiedAt && (
+            <VerificationCard
+              student={verifiedStudent}
+              verifiedAt={verifiedAt}
+              scanAction={scanAction}
+              selectedPurpose={selectedPurpose}
+              result={result}
+              recording={processScan.isPending}
+            />
+          )}
+
+          {!verifiedStudent && (
             <QRScanner
               key={scanAction}
               onScan={handleScan}
-              paused={paused || processScan.isPending || Boolean(verifiedStudent)}
+              paused={paused || processScan.isPending}
               label={`student QR code for ${SCAN_MODES[scanAction].label}`}
             />
+          )}
 
-            <div style={{ marginTop: '1rem' }}>
-              <Alert type="info">
-                <strong>Automatic workflow:</strong> Scan once. The system validates the QR code, displays the student profile, and records {SCAN_MODES[scanAction].label} immediately.
-              </Alert>
-            </div>
+          <div style={{ marginTop: '1rem' }}>
+            <Alert type="info">
+              <strong>Automatic workflow:</strong> Scan once. The system validates the QR code, displays the student profile, and records {SCAN_MODES[scanAction].label} immediately.
+            </Alert>
           </div>
-        </section>
-      </div>
-    </PageLayout>
+        </div>
+      </section>
+    </main>
   );
 }
 

@@ -6,7 +6,6 @@ export function Navbar() {
   const [menuOpen, setMenuOpen] = useState(false);
   const { pathname } = useLocation();
   const isAdminArea = pathname.startsWith('/admin');
-  const isScannerArea = pathname.startsWith('/admin/scan');
 
   type NavItem = { to: string; label: string; end?: boolean };
 
@@ -21,25 +20,20 @@ export function Navbar() {
 
   const adminLinks: NavItem[] = [
     { to: '/admin/dashboard', label: 'Dashboard' },
-    { to: '/admin/scan/login', label: 'QR Scanner' },
+    { to: '/admin/scan', label: 'QR Scanner' },
     { to: '/admin/students', label: 'Student Management' },
     { to: '/admin/history', label: 'Attendance History' },
     { to: '/admin/reports', label: 'Reports' },
     { to: '/admin/export', label: 'Export Data' },
   ];
 
-  const scannerLinks: NavItem[] = [
-    { to: '/admin/scan/login', label: 'Login Scanner' },
-    { to: '/admin/scan/logout', label: 'Logout Scanner' },
-  ];
-
-  const links = isScannerArea ? scannerLinks : isAdminArea ? adminLinks : publicLinks;
+  const links = isAdminArea ? adminLinks : publicLinks;
 
   return (
     <nav className="navbar">
       <div className="container navbar-inner">
         <Link
-          to={isScannerArea ? '/admin/scan/login' : isAdminArea ? '/admin/dashboard' : '/'}
+          to={isAdminArea ? '/admin/dashboard' : '/'}
           className="navbar-brand"
           onClick={() => setMenuOpen(false)}
         >
