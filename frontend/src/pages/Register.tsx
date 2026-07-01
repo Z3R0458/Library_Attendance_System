@@ -1,4 +1,4 @@
-import { useEffect, useState, type ChangeEvent, type FormEvent } from 'react';
+import { useEffect, useRef, useState, type ChangeEvent, type FormEvent } from 'react';
 import { Link } from 'react-router-dom';
 import { QRCodeSVG } from 'qrcode.react';
 import { PageLayout } from '../components/layout/Navbar';
@@ -13,10 +13,18 @@ import {
 } from '../lib/profileImages';
 import {
   escapeLikePattern,
+  isDuplicateStudentIdError,
   isDuplicateStudentNameError,
   normalizeStudentName,
 } from '../lib/studentValidation';
 import type { Student } from '../types';
+
+const initialRegistrationForm = {
+  student_id: '',
+  name: '',
+  course: '',
+  year_level: 1,
+};
 
 export default function Register() {
   const [loading, setLoading] = useState(false);
@@ -26,12 +34,8 @@ export default function Register() {
   const [qrDownloadUrl, setQrDownloadUrl] = useState('');
   const [profileImage, setProfileImage] = useState<File | null>(null);
   const [profilePreviewUrl, setProfilePreviewUrl] = useState('');
-  const [form, setForm] = useState({
-    student_id: '',
-    name: '',
-    course: '',
-    year_level: 1,
-  });
+  const [form, setForm] = useState(initialRegistrationForm);
+  const profileInputRef = useRef<HTMLInputElement | null>(null);
 
   useEffect(() => {
     return () => {
@@ -149,12 +153,27 @@ export default function Register() {
         .single();
 
       if (insertError) {
-        setError(isDuplicateStudentNameError(insertError) ? 'Student name already exists.' : insertError.message);
+        setError(
+          isDuplicateStudentIdError(insertError)
+            ? 'Student ID already exists.'
+            : isDuplicateStudentNameError(insertError)
+              ? 'Student name already exists.'
+              : insertError.message,
+        );
         return;
       }
 
       setRegisteredStudent(newStudent as Student);
       setShowQrModal(true);
+      setForm(initialRegistrationForm);
+      setProfileImage(null);
+      if (profilePreviewUrl) {
+        URL.revokeObjectURL(profilePreviewUrl);
+        setProfilePreviewUrl('');
+      }
+      if (profileInputRef.current) {
+        profileInputRef.current.value = '';
+      }
     } catch (error) {
       setError(
         getSupabaseErrorMessage(
@@ -291,6 +310,7 @@ export default function Register() {
                 <label className="form-label" htmlFor="profile_picture">Profile Picture</label>
                 <input
                   id="profile_picture"
+                  ref={profileInputRef}
                   type="file"
                   className="form-control"
                   accept="image/jpeg,image/png,image/webp,image/*"

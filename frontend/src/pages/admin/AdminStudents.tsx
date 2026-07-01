@@ -12,6 +12,7 @@ import {
 } from '../../lib/profileImages';
 import {
   escapeLikePattern,
+  isDuplicateStudentIdError,
   isDuplicateStudentNameError,
   normalizeStudentName,
 } from '../../lib/studentValidation';
@@ -45,11 +46,30 @@ export default function AdminStudents() {
         profileImage?: File | null;
       },
     ) => {
+      const studentId = student.student_id.trim();
       const normalizedName = normalizeStudentName(student.name);
+
+      if (!studentId) {
+        throw new Error('Student ID is required.');
+      }
 
       if (!normalizedName) {
         throw new Error('Student name is required.');
       }
+
+      if (!COURSE_OPTIONS.includes(student.course as (typeof COURSE_OPTIONS)[number])) {
+        throw new Error('Please select a valid course.');
+      }
+
+      const { data: existingStudentId, error: existingStudentIdError } = await supabase
+        .from('students')
+        .select('id')
+        .eq('student_id', studentId)
+        .neq('id', student.id)
+        .limit(1);
+
+      if (existingStudentIdError) throw existingStudentIdError;
+      if (existingStudentId.length > 0) throw new Error('Student ID already exists.');
 
       const { data: existingName, error: existingNameError } = await supabase
         .from('students')
@@ -63,12 +83,13 @@ export default function AdminStudents() {
 
       let profilePictureUrl: string | undefined;
       if (student.profileImage) {
-        profilePictureUrl = await uploadStudentProfileImage(student.profileImage, student.student_id);
+        profilePictureUrl = await uploadStudentProfileImage(student.profileImage, studentId);
       }
 
       const { error } = await supabase
         .from('students')
         .update({
+          student_id: studentId,
           name: normalizedName,
           course: student.course,
           year_level: student.year_level,
@@ -87,9 +108,11 @@ export default function AdminStudents() {
     },
     onError: (err) => {
       setError(
-        isDuplicateStudentNameError(err)
-          ? 'Student name already exists.'
-          : getProfileImageErrorMessage(err),
+        isDuplicateStudentIdError(err)
+          ? 'Student ID already exists.'
+          : isDuplicateStudentNameError(err)
+            ? 'Student name already exists.'
+            : getProfileImageErrorMessage(err),
       );
     },
   });
@@ -196,7 +219,12 @@ function StudentRow({
   ) => void;
   onDelete: () => void;
 }) {
-  const [edit, setEdit] = useState({ name: student.name, course: student.course, year_level: student.year_level });
+  const [edit, setEdit] = useState({
+    student_id: student.student_id,
+    name: student.name,
+    course: student.course,
+    year_level: student.year_level,
+  });
   const [profileImage, setProfileImage] = useState<File | null>(null);
   const [profilePreviewUrl, setProfilePreviewUrl] = useState('');
   const [imageError, setImageError] = useState('');
@@ -232,7 +260,12 @@ function StudentRow({
   return (
     <tr>
       <td>
-        <span className="readonly-id">{student.student_id}</span>
+        <input
+          className="form-control"
+          value={edit.student_id}
+          onChange={(e) => setEdit({ ...edit, student_id: e.target.value })}
+          style={{ minWidth: 120 }}
+        />
       </td>
       <td>
         <div className="student-photo-cell">
@@ -268,7 +301,7 @@ function StudentRow({
           type="button"
           className="btn btn-maroon"
           style={{ padding: '0.4rem 0.75rem', fontSize: '0.8rem' }}
-          onClick={() => onUpdate({ id: student.id, student_id: student.student_id, ...edit, profileImage })}
+          onClick={() => onUpdate({ id: student.id, ...edit, profileImage })}
         >
           Save
         </button>{' '}
