@@ -1,5 +1,6 @@
 import { useMutation } from '@tanstack/react-query';
 import { processQrScan } from '../lib/libraryRepository';
+import type { ParsedQrPayload } from '../lib/constants';
 import type { ScanResult } from '../types';
 
 export type ScanAction = 'time_in' | 'time_out';
@@ -7,15 +8,13 @@ export type ScanAction = 'time_in' | 'time_out';
 export function useProcessScan() {
   return useMutation({
     mutationFn: async ({
-      qrToken,
-      action,
+      payload,
       purpose,
     }: {
-      qrToken: string;
-      action?: ScanAction;
+      payload: ParsedQrPayload;
       purpose?: string;
     }): Promise<ScanResult> => {
-      return processQrScan(qrToken, action, purpose);
+      return processQrScan(payload, purpose);
     },
   });
 }

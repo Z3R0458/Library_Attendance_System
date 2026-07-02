@@ -118,7 +118,7 @@ export default function MyQR() {
                 )}
                 <QRCodeSVG
                   id="student-qr"
-                  value={buildQrPayload(student.qr_token)}
+                  value={buildQrPayload(student.qr_token, student.student_id)}
                   size={220}
                   level="H"
                   includeMargin

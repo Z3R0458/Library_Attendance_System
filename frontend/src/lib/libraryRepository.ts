@@ -1,4 +1,4 @@
-import { PURPOSES, TIMEZONE } from './constants';
+import { PURPOSES, TIMEZONE, type ParsedQrPayload } from './constants';
 import {
   countPendingQueueItems,
   createUuid,
@@ -190,6 +190,16 @@ export async function getStudentByQrToken(qrToken: string) {
   return student?.is_active ? student : null;
 }
 
+export async function getStudentByQrPayload(payload: ParsedQrPayload) {
+  const student = payload.studentId
+    ? await getLocalStudentByStudentId(payload.studentId)
+    : payload.qrToken
+      ? await getLocalStudentByQrToken(payload.qrToken)
+      : null;
+
+  return student?.is_active ? student : null;
+}
+
 export async function listStudents(page: number, pageSize: number) {
   const students = await getLocalStudents();
   const rows = students
@@ -198,8 +208,8 @@ export async function listStudents(page: number, pageSize: number) {
   return { rows, count: students.length };
 }
 
-export async function processQrScan(qrToken: string, action: 'time_in' | 'time_out' = 'time_in', purpose = 'Study') {
-  const student = await getStudentByQrToken(qrToken);
+export async function processQrScan(payload: ParsedQrPayload, purpose = 'Study') {
+  const student = await getStudentByQrPayload(payload);
   if (!student) {
     return {
       success: false,
@@ -211,26 +221,18 @@ export async function processQrScan(qrToken: string, action: 'time_in' | 'time_o
   const now = new Date().toISOString();
   const today = todayInLibraryTimezone();
   const rows = await getLocalAttendanceRows();
-  const activeAttendance = rows
-    .filter(
-      (attendance) =>
-        attendance.student_id === student.student_id &&
-        attendance.date === today &&
-        attendance.status === 'checked_in' &&
-        !attendance.time_out,
-    )
-    .sort((a, b) => (b.time_in ?? '').localeCompare(a.time_in ?? ''))[0];
+  const latestAttendance = rows
+    .filter((attendance) => attendance.student_id === student.student_id && attendance.date === today)
+    .sort(
+      (a, b) =>
+        (b.last_scan_at ?? b.time_out ?? b.time_in ?? b.created_at).localeCompare(
+          a.last_scan_at ?? a.time_out ?? a.time_in ?? a.created_at,
+        ),
+    )[0];
+  const shouldLogin =
+    !latestAttendance || latestAttendance.status === 'completed' || Boolean(latestAttendance.time_out);
 
-  if (action === 'time_in') {
-    if (activeAttendance) {
-      return {
-        success: false,
-        error: 'already_checked_in',
-        message: `${student.name} is already logged in. Please log out first before logging in again.`,
-        student,
-      } satisfies ScanResult;
-    }
-
+  if (shouldLogin) {
     const attendance: Attendance = {
       id: createUuid(),
       student_id: student.student_id,
@@ -244,7 +246,6 @@ export async function processQrScan(qrToken: string, action: 'time_in' | 'time_o
     };
 
     await putLocalAttendance(attendance, true);
-    void syncOfflineQueue();
 
     return {
       success: true,
@@ -261,24 +262,23 @@ export async function processQrScan(qrToken: string, action: 'time_in' | 'time_o
     } satisfies ScanResult;
   }
 
-  if (!activeAttendance) {
+  if (!latestAttendance || latestAttendance.status !== 'checked_in' || latestAttendance.time_out) {
     return {
       success: false,
-      error: 'missing_time_in',
-      message: `${student.name} is not currently logged in. They must log in before logging out.`,
+      error: 'already_completed',
+      message: `${student.name} already has a completed logout record for today.`,
       student,
     } satisfies ScanResult;
   }
 
   const completed: Attendance = {
-    ...activeAttendance,
+    ...latestAttendance,
     time_out: now,
     status: 'completed',
     last_scan_at: now,
   };
 
   await putLocalAttendance(completed, true);
-  void syncOfflineQueue();
 
   return {
     success: true,

@@ -26,19 +26,30 @@ export const YEAR_LEVELS = [
   { value: 4, label: 'Fourth Year' },
 ] as const;
 
-export function buildQrPayload(qrToken: string): string {
-  return JSON.stringify({ v: 1, token: qrToken });
+export interface ParsedQrPayload {
+  studentId?: string;
+  qrToken?: string;
 }
 
-export function parseQrPayload(raw: string): string | null {
+export function buildQrPayload(qrToken: string, studentId?: string): string {
+  return JSON.stringify({ v: 2, student_id: studentId, token: qrToken });
+}
+
+export function parseQrPayload(raw: string): ParsedQrPayload | null {
   try {
-    const parsed = JSON.parse(raw) as { v?: number; token?: string };
-    if (parsed.token) return parsed.token;
+    const parsed = JSON.parse(raw) as { v?: number; token?: string; student_id?: string };
+    if (parsed.student_id || parsed.token) {
+      return {
+        studentId: parsed.student_id,
+        qrToken: parsed.token,
+      };
+    }
   } catch {
     // Plain UUID fallback
     const uuidRegex =
       /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-    if (uuidRegex.test(raw.trim())) return raw.trim();
+    if (uuidRegex.test(raw.trim())) return { qrToken: raw.trim() };
+    if (raw.trim()) return { studentId: raw.trim() };
   }
   return null;
 }

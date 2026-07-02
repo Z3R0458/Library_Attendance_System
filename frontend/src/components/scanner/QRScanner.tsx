@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useId, useRef } from 'react';
 import { Html5Qrcode } from 'html5-qrcode';
-import { parseQrPayload } from '../../lib/constants';
+import { parseQrPayload, type ParsedQrPayload } from '../../lib/constants';
 
 interface QRScannerProps {
-  onScan: (token: string) => void;
+  onScan: (payload: ParsedQrPayload) => void;
   paused?: boolean;
   label?: string;
 }
@@ -17,17 +17,18 @@ export function QRScanner({ onScan, paused = false, label = 'student QR code' }:
 
   const handleScan = useCallback(
     (decodedText: string) => {
-      const token = parseQrPayload(decodedText);
-      if (!token) return;
+      const payload = parseQrPayload(decodedText);
+      const dedupeKey = payload?.studentId ?? payload?.qrToken;
+      if (!payload || !dedupeKey) return;
 
       const now = Date.now();
-      if (token === lastScanRef.current && now - lastScanTimeRef.current < 3000) {
+      if (dedupeKey === lastScanRef.current && now - lastScanTimeRef.current < 3000) {
         return;
       }
 
-      lastScanRef.current = token;
+      lastScanRef.current = dedupeKey;
       lastScanTimeRef.current = now;
-      onScan(token);
+      onScan(payload);
     },
     [onScan],
   );

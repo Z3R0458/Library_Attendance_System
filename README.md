@@ -5,8 +5,8 @@ Modern library attendance system with QR code check-in/out, built with React, Vi
 ## Features
 
 - Student registration with auto-generated unique QR codes
-- QR scanner for Time In / Time Out using webcam or mobile camera
-- Duplicate scan prevention with a configurable cooldown
+- Offline QR scanner that automatically detects login/logout using today's local attendance record
+- Duplicate scan prevention in the camera workflow
 - Admin dashboard for today's visitors, current visitors, and live attendance
 - Attendance history with search and date filtering
 - Reports and analytics with charts
@@ -70,7 +70,7 @@ Open http://localhost:5173.
 |------|-----|-------------|
 | Home | `/` | Landing page |
 | Register | `/register` | New student signup |
-| Scanner | `/scan` | Separate Time In and Time Out scanner |
+| Scanner | `/scan` | Offline automatic login/logout QR scanner |
 | My QR | `/my-qr` | View/download personal QR code |
 | Admin Login | `/admin/login` | Supabase Auth login |
 | Dashboard | `/admin/dashboard` | Stats and live visitors |
@@ -81,10 +81,14 @@ Open http://localhost:5173.
 
 ## QR Attendance Logic
 
-1. Choose Time In before scanning students who are entering.
-2. Choose Time Out before scanning students who are leaving.
-3. Scans within the configured cooldown are rejected.
-4. Invalid, unregistered, or out-of-sequence QR codes show a clear error message.
+1. Scan the student QR code.
+2. The QR payload provides the student ID for local lookup. Older QR codes that only contain the QR token still work.
+3. The scanner reads today's local attendance records and determines the next action automatically.
+4. No attendance record today means Login.
+5. The latest open Login record means Logout.
+6. The latest completed Logout record allows another Login, matching the current multiple-visits-per-day system rule.
+7. The attendance write is saved locally with the device timestamp and queued for synchronization.
+8. No Supabase request is made by the scan operation.
 
 ## Build for Production
 
@@ -135,7 +139,6 @@ Synchronization pushes queued changes to Supabase with stable UUID primary keys,
 - The app shell is cached by `frontend/public/offline-sw.js` after the first successful load.
 - Admin login still requires one online Supabase login on a device. After that, the cached Supabase session can continue to open admin tools while offline.
 - Profile images selected while offline are stored as local data URLs so registration can finish immediately.
-- Book borrowing/returning is not currently a module in this codebase; the offline repository pattern is ready to extend with `books` and `borrowings` stores if that feature is added.
 
 ### Recovery Notes
 

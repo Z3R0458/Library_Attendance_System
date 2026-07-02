@@ -1,8 +1,8 @@
 import { useCallback, useState } from 'react';
 import { QRScanner } from '../components/scanner/QRScanner';
 import { Alert } from '../components/ui/Alert';
-import { PURPOSES, TIMEZONE } from '../lib/constants';
-import { getStudentByQrToken } from '../lib/libraryRepository';
+import { PURPOSES, TIMEZONE, type ParsedQrPayload } from '../lib/constants';
+import { getStudentByQrPayload } from '../lib/libraryRepository';
 import { useProcessScan, type ScanAction } from '../hooks/useAttendance';
 import type { ScanResult, Student } from '../types';
 
@@ -54,7 +54,6 @@ function formatDuration(start?: string | null, end?: string | null) {
 }
 
 export default function Scan() {
-  const [scanAction, setScanAction] = useState<ScanAction>('time_in');
   const [selectedPurpose, setSelectedPurpose] = useState<(typeof PURPOSES)[number]>(PURPOSES[0]);
   const [verifiedStudent, setVerifiedStudent] = useState<Student | null>(null);
   const [verifiedAt, setVerifiedAt] = useState<Date | null>(null);
@@ -72,7 +71,7 @@ export default function Scan() {
   }, []);
 
   const handleScan = useCallback(
-    async (token: string) => {
+    async (payload: ParsedQrPayload) => {
       if (processScan.isPending || paused) return;
 
       setPaused(true);
@@ -80,7 +79,7 @@ export default function Scan() {
       setPurposeError('');
 
       try {
-        const data = await getStudentByQrToken(token);
+        const data = await getStudentByQrPayload(payload);
 
         if (!data) {
           setResult({
@@ -97,8 +96,7 @@ export default function Scan() {
         setVerifiedAt(new Date());
 
         const scanResult = await processScan.mutateAsync({
-          qrToken: student.qr_token,
-          action: scanAction,
+          payload,
           purpose: selectedPurpose,
         });
 
@@ -122,39 +120,22 @@ export default function Scan() {
         window.setTimeout(clearScan, 3000);
       }
     },
-    [clearScan, paused, processScan, scanAction, selectedPurpose],
+    [clearScan, paused, processScan, selectedPurpose],
   );
 
   return (
     <main className="scanner-kiosk-page">
       <section className="card scanner-kiosk-card">
         <div className="card-header scanner-kiosk-header">
-          <h2>{SCAN_MODES[scanAction].label} Scanner</h2>
-          <p>{SCAN_MODES[scanAction].help}</p>
+          <h2>Attendance Scanner</h2>
+          <p>Scan the student QR code. The system automatically records login or logout from today's latest local attendance record.</p>
         </div>
         <div className="card-body">
-          <div className="scan-mode-control" aria-label="Scanner mode">
-            {Object.entries(SCAN_MODES).map(([action, item]) => (
-              <button
-                key={action}
-                type="button"
-                className={`scan-mode-button${scanAction === action ? ' active' : ''}`}
-                disabled={processScan.isPending || paused}
-                onClick={() => {
-                  setScanAction(action as ScanAction);
-                  clearScan();
-                }}
-              >
-                {item.label}
-              </button>
-            ))}
-          </div>
-
           <p className="scan-mode-help">
-            Mode: <strong>{SCAN_MODES[scanAction].label}</strong>. Attendance records automatically after a successful scan.
+            Mode: <strong>Automatic</strong>. No attendance request is sent to Supabase during scanning.
           </p>
 
-          {scanAction === 'time_in' && !verifiedStudent && (
+          {!verifiedStudent && (
             <div className="form-group scan-purpose-select">
               <label className="form-label" htmlFor="scan-purpose">Purpose of Visit</label>
               <select
@@ -186,7 +167,7 @@ export default function Scan() {
             <VerificationCard
               student={verifiedStudent}
               verifiedAt={verifiedAt}
-              scanAction={scanAction}
+              scanAction={result?.action ?? 'time_in'}
               selectedPurpose={selectedPurpose}
               result={result}
               recording={processScan.isPending}
@@ -195,16 +176,15 @@ export default function Scan() {
 
           {!verifiedStudent && (
             <QRScanner
-              key={scanAction}
               onScan={handleScan}
               paused={paused || processScan.isPending}
-              label={`student QR code for ${SCAN_MODES[scanAction].label}`}
+              label="student QR code"
             />
           )}
 
           <div style={{ marginTop: '1rem' }}>
             <Alert type="info">
-              <strong>Automatic workflow:</strong> Scan once. The system validates the QR code, displays the student profile, and records {SCAN_MODES[scanAction].label} immediately.
+              <strong>Automatic workflow:</strong> Scan once. The system validates the QR code locally, detects login or logout, and saves the attendance record for synchronization.
             </Alert>
           </div>
         </div>
@@ -283,7 +263,7 @@ function VerificationCard({
             <dd>{formatTime(verifiedAt)}</dd>
           </div>
           <div>
-            <dt>Scan Mode</dt>
+            <dt>Detected Action</dt>
             <dd>{SCAN_MODES[scanAction].label}</dd>
           </div>
           {scanAction === 'time_in' && (

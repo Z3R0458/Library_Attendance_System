@@ -298,7 +298,7 @@ export default function Register() {
             <div className="qr-modal-body">
               <QRCodeSVG
                 id="registered-student-qr"
-                value={buildQrPayload(registeredStudent.qr_token)}
+                value={buildQrPayload(registeredStudent.qr_token, registeredStudent.student_id)}
                 size={360}
                 level="H"
                 includeMargin
