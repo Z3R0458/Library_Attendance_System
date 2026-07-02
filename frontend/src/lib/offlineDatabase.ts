@@ -335,6 +335,15 @@ export async function getLocalAttendanceRows() {
   return Promise.all(stored.map(fromStoredAttendance));
 }
 
+export async function getLocalAttendanceByStudentId(studentId: string) {
+  const db = await openOfflineDb();
+  const transaction = db.transaction('attendance', 'readonly');
+  const stored = await requestToPromise<StoredAttendance[]>(
+    transaction.objectStore('attendance').index('student_id').getAll(studentId),
+  );
+  return Promise.all(stored.map(fromStoredAttendance));
+}
+
 export async function getLocalAttendanceWithStudents(): Promise<AttendanceWithStudent[]> {
   const [attendanceRows, students] = await Promise.all([getLocalAttendanceRows(), getLocalStudents()]);
   const studentById = new Map(students.map((student) => [student.student_id, student]));

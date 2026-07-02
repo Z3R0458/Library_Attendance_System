@@ -5,6 +5,7 @@ import {
   deleteLocalStudent,
   deleteQueueItem,
   getLocalAttendance,
+  getLocalAttendanceByStudentId,
   getLocalAttendanceRows,
   getLocalAttendanceWithStudents,
   getLocalStudent,
@@ -220,8 +221,8 @@ export async function processQrScan(payload: ParsedQrPayload, purpose = 'Study')
 
   const now = new Date().toISOString();
   const today = todayInLibraryTimezone();
-  const rows = await getLocalAttendanceRows();
-  const latestAttendance = rows
+  const studentAttendanceRows = await getLocalAttendanceByStudentId(student.student_id);
+  const latestAttendance = studentAttendanceRows
     .filter((attendance) => attendance.student_id === student.student_id && attendance.date === today)
     .sort(
       (a, b) =>

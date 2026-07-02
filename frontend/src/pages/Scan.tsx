@@ -2,8 +2,8 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { QRScanner } from '../components/scanner/QRScanner';
 import { Alert } from '../components/ui/Alert';
 import { PURPOSES, TIMEZONE, type ParsedQrPayload } from '../lib/constants';
-import { getStudentByQrPayload } from '../lib/libraryRepository';
-import { useProcessScan, type ScanAction } from '../hooks/useAttendance';
+import { getStudentByQrPayload, processQrScan } from '../lib/libraryRepository';
+import type { ScanAction } from '../hooks/useAttendance';
 import type { ScanResult, Student } from '../types';
 
 const SAME_STUDENT_SCAN_COOLDOWN_MS = 8000;
@@ -62,9 +62,10 @@ export default function Scan() {
   const [verifiedAt, setVerifiedAt] = useState<Date | null>(null);
   const [result, setResult] = useState<ScanResult | null>(null);
   const [purposeError, setPurposeError] = useState('');
+  const [recording, setRecording] = useState(false);
   const lastProcessedRef = useRef(new Map<string, number>());
+  const inFlightScansRef = useRef(new Set<string>());
   const clearTimerRef = useRef<number | null>(null);
-  const processScan = useProcessScan();
 
   const clearScan = useCallback(() => {
     setVerifiedStudent(null);
@@ -90,10 +91,9 @@ export default function Scan() {
 
   const handleScan = useCallback(
     async (payload: ParsedQrPayload) => {
-      if (processScan.isPending) return;
-
       const scanKey = payload.studentId ?? payload.qrToken;
       if (!scanKey) return;
+      if (inFlightScansRef.current.has(scanKey)) return;
 
       const nowMs = Date.now();
       const lastProcessedAt = lastProcessedRef.current.get(scanKey) ?? 0;
@@ -102,6 +102,8 @@ export default function Scan() {
       }
 
       lastProcessedRef.current.set(scanKey, nowMs);
+      inFlightScansRef.current.add(scanKey);
+      setRecording(true);
       setResult(null);
       setPurposeError('');
 
@@ -122,10 +124,7 @@ export default function Scan() {
         setVerifiedStudent(student);
         setVerifiedAt(new Date());
 
-        const scanResult = await processScan.mutateAsync({
-          payload,
-          purpose: selectedPurpose,
-        });
+        const scanResult = await processQrScan(payload, selectedPurpose);
 
         const nextResult: ScanResult =
           scanResult.success && scanResult.action === 'time_in' && scanResult.attendance
@@ -146,9 +145,12 @@ export default function Scan() {
           error: 'invalid_qr',
         });
         scheduleClearScan();
+      } finally {
+        inFlightScansRef.current.delete(scanKey);
+        setRecording(false);
       }
     },
-    [processScan, scheduleClearScan, selectedPurpose],
+    [scheduleClearScan, selectedPurpose],
   );
 
   return (
@@ -181,7 +183,7 @@ export default function Scan() {
             </div>
           )}
 
-          {processScan.isPending && <Alert type="info">Recording attendance...</Alert>}
+          {recording && <Alert type="info">Recording attendance...</Alert>}
           {purposeError && <Alert type="error">{purposeError}</Alert>}
 
           {result && !verifiedStudent && (
@@ -198,7 +200,7 @@ export default function Scan() {
               scanAction={result?.action ?? 'time_in'}
               selectedPurpose={selectedPurpose}
               result={result}
-              recording={processScan.isPending}
+              recording={recording}
             />
           )}
 
