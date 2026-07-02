@@ -1,6 +1,7 @@
 import { Link, NavLink, useLocation } from 'react-router-dom';
 import { useState } from 'react';
 import { APP_NAME } from '../../lib/constants';
+import { ConnectionStatus } from './ConnectionStatus';
 
 export function Navbar() {
   const [menuOpen, setMenuOpen] = useState(false);
@@ -62,6 +63,7 @@ export function Navbar() {
             </li>
           ))}
         </ul>
+        <ConnectionStatus />
       </div>
     </nav>
   );

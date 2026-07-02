@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { format } from 'date-fns';
 import { PageLayout } from '../../components/layout/Navbar';
-import { supabase } from '../../lib/supabase';
+import { searchAttendance } from '../../lib/libraryRepository';
 import type { AttendanceStatusFilter } from '../../types';
 
 export default function AttendanceHistory() {
@@ -18,35 +18,7 @@ export default function AttendanceHistory() {
 
   const { data: records, isLoading } = useQuery({
     queryKey: ['attendance-history', applied],
-    queryFn: async () => {
-      let query = supabase
-        .from('attendance')
-        .select('*, students(name, course, year_level)')
-        .gte('date', applied.start_date)
-        .lte('date', applied.end_date)
-        .order('time_in', { ascending: false });
-
-      if (applied.student_id) {
-        query = query.ilike('student_id', `%${applied.student_id}%`);
-      }
-      if (applied.status) {
-        query = query.eq('status', applied.status);
-      }
-
-      const { data, error } = await query;
-      if (error) throw error;
-
-      let results = data ?? [];
-
-      if (applied.name) {
-        const term = applied.name.toLowerCase();
-        results = results.filter((r) =>
-          (r.students as { name: string })?.name?.toLowerCase().includes(term),
-        );
-      }
-
-      return results;
-    },
+    queryFn: async () => searchAttendance(applied),
   });
 
   const handleSearch = (e: React.FormEvent) => {
@@ -119,7 +91,7 @@ export default function AttendanceHistory() {
               <div className="empty-state"><p>No records match your filters.</p></div>
             ) : (
               <div className="table-wrap">
-                <table>
+                <table className="stacked-table">
                   <thead>
                     <tr>
                       <th>Student ID</th>
@@ -134,17 +106,17 @@ export default function AttendanceHistory() {
                   <tbody>
                     {records.map((row) => (
                       <tr key={row.id}>
-                        <td>{row.student_id}</td>
-                        <td>{(row.students as { name: string })?.name}</td>
-                        <td>{row.date}</td>
-                        <td>{row.time_in ? format(new Date(row.time_in), 'hh:mm a') : '—'}</td>
-                        <td>{row.time_out ? format(new Date(row.time_out), 'hh:mm a') : '—'}</td>
-                        <td>
+                        <td data-label="Student ID">{row.student_id}</td>
+                        <td data-label="Name">{(row.students as { name: string })?.name}</td>
+                        <td data-label="Date">{row.date}</td>
+                        <td data-label="Time In">{row.time_in ? format(new Date(row.time_in), 'hh:mm a') : '—'}</td>
+                        <td data-label="Time Out">{row.time_out ? format(new Date(row.time_out), 'hh:mm a') : '—'}</td>
+                        <td data-label="Status">
                           <span className={`badge ${row.status === 'checked_in' ? 'badge-warning' : 'badge-success'}`}>
                             {row.status === 'checked_in' ? 'Active' : 'Completed'}
                           </span>
                         </td>
-                        <td>{row.purpose}</td>
+                        <td data-label="Purpose">{row.purpose}</td>
                       </tr>
                     ))}
                   </tbody>

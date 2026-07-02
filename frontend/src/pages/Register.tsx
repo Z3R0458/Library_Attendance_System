@@ -3,18 +3,11 @@ import { Link } from 'react-router-dom';
 import { QRCodeSVG } from 'qrcode.react';
 import { PageLayout } from '../components/layout/Navbar';
 import { Alert } from '../components/ui/Alert';
-import { getSupabaseErrorMessage, supabase } from '../lib/supabase';
 import { buildQrPayload, COURSE_OPTIONS, YEAR_LEVELS } from '../lib/constants';
+import { registerStudent } from '../lib/libraryRepository';
 import { createSvgPngObjectUrl } from '../lib/qrDownload';
+import { getProfileImageErrorMessage, validateProfileImage } from '../lib/profileImages';
 import {
-  getProfileImageErrorMessage,
-  uploadStudentProfileImage,
-  validateProfileImage,
-} from '../lib/profileImages';
-import {
-  escapeLikePattern,
-  isDuplicateStudentIdError,
-  isDuplicateStudentNameError,
   normalizeStudentName,
 } from '../lib/studentValidation';
 import type { Student } from '../types';
@@ -100,68 +93,13 @@ export default function Register() {
     }
 
     try {
-      const { data: existing, error: existingError } = await supabase
-        .from('students')
-        .select('id')
-        .eq('student_id', studentId)
-        .maybeSingle();
-
-      if (existingError) {
-        setError(existingError.message);
-        return;
-      }
-
-      if (existing) {
-        setError('Student ID already exists.');
-        return;
-      }
-
-      const { data: existingName, error: existingNameError } = await supabase
-        .from('students')
-        .select('id')
-        .ilike('name', escapeLikePattern(normalizedName))
-        .limit(1);
-
-      if (existingNameError) {
-        setError(existingNameError.message);
-        return;
-      }
-
-      if (existingName.length > 0) {
-        setError('Student name already exists.');
-        return;
-      }
-
-      let profilePictureUrl = '';
-      try {
-        profilePictureUrl = await uploadStudentProfileImage(profileImage, studentId);
-      } catch (error) {
-        setError(getProfileImageErrorMessage(error));
-        return;
-      }
-
-      const { data: newStudent, error: insertError } = await supabase
-        .from('students')
-        .insert({
-          student_id: studentId,
-          name: normalizedName,
-          course: course.trim(),
-          year_level,
-          profile_picture_url: profilePictureUrl,
-        })
-        .select('*')
-        .single();
-
-      if (insertError) {
-        setError(
-          isDuplicateStudentIdError(insertError)
-            ? 'Student ID already exists.'
-            : isDuplicateStudentNameError(insertError)
-              ? 'Student name already exists.'
-              : insertError.message,
-        );
-        return;
-      }
+      const newStudent = await registerStudent({
+        student_id: studentId,
+        name: normalizedName,
+        course: course.trim(),
+        year_level,
+        profileImage,
+      });
 
       setRegisteredStudent(newStudent as Student);
       setShowQrModal(true);
@@ -175,12 +113,7 @@ export default function Register() {
         profileInputRef.current.value = '';
       }
     } catch (error) {
-      setError(
-        getSupabaseErrorMessage(
-          error,
-          'Unable to register right now. Check your Supabase URL, key, and network connection.',
-        ),
-      );
+      setError(getProfileImageErrorMessage(error));
     } finally {
       setLoading(false);
     }

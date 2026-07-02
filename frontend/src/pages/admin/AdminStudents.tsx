@@ -3,15 +3,13 @@ import { Link } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { PageLayout } from '../../components/layout/Navbar';
 import { Alert } from '../../components/ui/Alert';
-import { supabase } from '../../lib/supabase';
+import { listStudents, removeStudent, updateStudent } from '../../lib/libraryRepository';
 import { COURSE_OPTIONS, YEAR_LEVELS } from '../../lib/constants';
 import {
   getProfileImageErrorMessage,
-  uploadStudentProfileImage,
   validateProfileImage,
 } from '../../lib/profileImages';
 import {
-  escapeLikePattern,
   isDuplicateStudentIdError,
   isDuplicateStudentNameError,
   normalizeStudentName,
@@ -28,15 +26,7 @@ export default function AdminStudents() {
   const { data, isLoading } = useQuery({
     queryKey: ['students', page],
     queryFn: async () => {
-      const from = page * pageSize;
-      const to = from + pageSize - 1;
-      const { data: rows, error, count } = await supabase
-        .from('students')
-        .select('*', { count: 'exact' })
-        .order('created_at', { ascending: false })
-        .range(from, to);
-      if (error) throw error;
-      return { rows: rows as Student[], count: count ?? 0 };
+      return listStudents(page, pageSize);
     },
   });
 
@@ -61,42 +51,14 @@ export default function AdminStudents() {
         throw new Error('Please select a valid course.');
       }
 
-      const { data: existingStudentId, error: existingStudentIdError } = await supabase
-        .from('students')
-        .select('id')
-        .eq('student_id', studentId)
-        .neq('id', student.id)
-        .limit(1);
-
-      if (existingStudentIdError) throw existingStudentIdError;
-      if (existingStudentId.length > 0) throw new Error('Student ID already exists.');
-
-      const { data: existingName, error: existingNameError } = await supabase
-        .from('students')
-        .select('id')
-        .ilike('name', escapeLikePattern(normalizedName))
-        .neq('id', student.id)
-        .limit(1);
-
-      if (existingNameError) throw existingNameError;
-      if (existingName.length > 0) throw new Error('Student name already exists.');
-
-      let profilePictureUrl: string | undefined;
-      if (student.profileImage) {
-        profilePictureUrl = await uploadStudentProfileImage(student.profileImage, studentId);
-      }
-
-      const { error } = await supabase
-        .from('students')
-        .update({
-          student_id: studentId,
-          name: normalizedName,
-          course: student.course,
-          year_level: student.year_level,
-          ...(profilePictureUrl ? { profile_picture_url: profilePictureUrl } : {}),
-        })
-        .eq('id', student.id);
-      if (error) throw error;
+      await updateStudent({
+        id: student.id,
+        student_id: studentId,
+        name: normalizedName,
+        course: student.course,
+        year_level: student.year_level,
+        profileImage: student.profileImage,
+      });
     },
     onMutate: () => {
       setMessage('');
@@ -119,8 +81,7 @@ export default function AdminStudents() {
 
   const deleteMutation = useMutation({
     mutationFn: async (id: string) => {
-      const { error } = await supabase.from('students').delete().eq('id', id);
-      if (error) throw error;
+      await removeStudent(id);
     },
     onMutate: () => {
       setMessage('');
@@ -160,7 +121,7 @@ export default function AdminStudents() {
             ) : (
               <>
                 <div className="table-wrap">
-                  <table>
+                  <table className="stacked-table">
                     <thead>
                       <tr>
                         <th>Student ID</th>
@@ -187,7 +148,7 @@ export default function AdminStudents() {
                 </div>
 
                 {totalPages > 1 && (
-                  <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'center', marginTop: '1rem' }}>
+                  <div className="pagination-actions">
                     <button type="button" className="btn btn-secondary" disabled={page === 0} onClick={() => setPage((p) => p - 1)}>
                       Previous
                     </button>
@@ -259,15 +220,16 @@ function StudentRow({
 
   return (
     <tr>
-      <td>
+      <td data-label="Student ID">
         <input
+          aria-label="Student ID"
           className="form-control"
           value={edit.student_id}
           onChange={(e) => setEdit({ ...edit, student_id: e.target.value })}
           style={{ minWidth: 120 }}
         />
       </td>
-      <td>
+      <td data-label="Photo">
         <div className="student-photo-cell">
           {photoUrl ? (
             <a href={photoUrl} target="_blank" rel="noreferrer" aria-label={`View ${student.name} profile picture`}>
@@ -283,20 +245,37 @@ function StudentRow({
           {imageError && <span className="field-error">{imageError}</span>}
         </div>
       </td>
-      <td>
-        <input className="form-control" value={edit.name} onChange={(e) => setEdit({ ...edit, name: e.target.value })} style={{ minWidth: 120 }} />
+      <td data-label="Name">
+        <input
+          aria-label="Name"
+          className="form-control"
+          value={edit.name}
+          onChange={(e) => setEdit({ ...edit, name: e.target.value })}
+          style={{ minWidth: 120 }}
+        />
       </td>
-      <td>
-        <select className="form-control" value={edit.course} onChange={(e) => setEdit({ ...edit, course: e.target.value })} style={{ minWidth: 120 }}>
+      <td data-label="Course">
+        <select
+          aria-label="Course"
+          className="form-control"
+          value={edit.course}
+          onChange={(e) => setEdit({ ...edit, course: e.target.value })}
+          style={{ minWidth: 120 }}
+        >
           {COURSE_OPTIONS.map((course) => <option key={course} value={course}>{course}</option>)}
         </select>
       </td>
-      <td>
-        <select className="form-control" value={edit.year_level} onChange={(e) => setEdit({ ...edit, year_level: +e.target.value })}>
+      <td data-label="Year">
+        <select
+          aria-label="Year level"
+          className="form-control"
+          value={edit.year_level}
+          onChange={(e) => setEdit({ ...edit, year_level: +e.target.value })}
+        >
           {YEAR_LEVELS.map(({ value }) => <option key={value} value={value}>Year {value}</option>)}
         </select>
       </td>
-      <td style={{ whiteSpace: 'nowrap' }}>
+      <td data-label="Actions" style={{ whiteSpace: 'nowrap' }}>
         <button
           type="button"
           className="btn btn-maroon"

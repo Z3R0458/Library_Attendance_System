@@ -8,3 +8,11 @@ createRoot(document.getElementById('root')!).render(
     <App />
   </StrictMode>,
 );
+
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    void navigator.serviceWorker.register('/offline-sw.js').catch((error) => {
+      console.warn('Offline app cache registration failed:', error);
+    });
+  });
+}

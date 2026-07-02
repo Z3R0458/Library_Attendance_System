@@ -3,8 +3,7 @@ import { useQuery } from '@tanstack/react-query';
 import { PageLayout } from '../../components/layout/Navbar';
 import { StatCard } from '../../components/ui/StatCard';
 import { useAuth } from '../../contexts/auth';
-import { supabase } from '../../lib/supabase';
-import type { DashboardStats } from '../../types';
+import { getCurrentlyInside, getDashboardStats } from '../../lib/libraryRepository';
 
 export default function AdminDashboard() {
   const { signOut } = useAuth();
@@ -12,28 +11,13 @@ export default function AdminDashboard() {
 
   const { data: stats, isLoading } = useQuery({
     queryKey: ['dashboard-stats'],
-    queryFn: async () => {
-      const { data, error } = await supabase.rpc('get_dashboard_stats');
-      if (error) throw error;
-      return data as DashboardStats;
-    },
+    queryFn: getDashboardStats,
     refetchInterval: 30000,
   });
 
   const { data: insideList } = useQuery({
     queryKey: ['currently-inside'],
-    queryFn: async () => {
-      const today = new Date().toISOString().split('T')[0];
-      const { data, error } = await supabase
-        .from('attendance')
-        .select('*, students(name, course, year_level)')
-        .eq('date', today)
-        .is('time_out', null)
-        .eq('status', 'checked_in')
-        .order('time_in', { ascending: false });
-      if (error) throw error;
-      return data;
-    },
+    queryFn: getCurrentlyInside,
     refetchInterval: 30000,
   });
 
@@ -66,7 +50,7 @@ export default function AdminDashboard() {
           </div>
         )}
 
-        <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap', marginBottom: '2rem' }}>
+        <div className="admin-action-grid">
           <Link to="/admin/scan" className="btn btn-secondary">Open Scanner</Link>
           <Link to="/admin/students" className="btn btn-maroon">Manage Students</Link>
           <Link to="/admin/history" className="btn btn-maroon">Attendance History</Link>
@@ -87,7 +71,7 @@ export default function AdminDashboard() {
               </div>
             ) : (
               <div className="table-wrap">
-                <table>
+                <table className="stacked-table">
                   <thead>
                     <tr>
                       <th>Student ID</th>
@@ -100,11 +84,11 @@ export default function AdminDashboard() {
                   <tbody>
                     {insideList.map((row) => (
                       <tr key={row.id}>
-                        <td>{row.student_id}</td>
-                        <td>{(row.students as { name: string })?.name}</td>
-                        <td>{(row.students as { course: string })?.course}</td>
-                        <td>{row.time_in ? new Date(row.time_in).toLocaleTimeString('en-US', { hour12: true }) : '—'}</td>
-                        <td>{row.purpose}</td>
+                        <td data-label="Student ID">{row.student_id}</td>
+                        <td data-label="Name">{(row.students as { name: string })?.name}</td>
+                        <td data-label="Course">{(row.students as { course: string })?.course}</td>
+                        <td data-label="Time In">{row.time_in ? new Date(row.time_in).toLocaleTimeString('en-US', { hour12: true }) : '—'}</td>
+                        <td data-label="Purpose">{row.purpose}</td>
                       </tr>
                     ))}
                   </tbody>

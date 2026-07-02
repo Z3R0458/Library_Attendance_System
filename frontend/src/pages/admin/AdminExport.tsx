@@ -5,7 +5,7 @@ import { format, subDays } from 'date-fns';
 import { PageLayout } from '../../components/layout/Navbar';
 import { Alert } from '../../components/ui/Alert';
 import { APP_NAME } from '../../lib/constants';
-import { supabase } from '../../lib/supabase';
+import { getAllStudentsForReports, getAttendanceForDateRange } from '../../lib/libraryRepository';
 
 type ExportType = 'attendance' | 'students';
 type ExportFormat = 'pdf' | 'csv';
@@ -263,16 +263,9 @@ async function prepareReport(
   limit?: number,
 ): Promise<PreparedReport> {
   if (exportType === 'attendance') {
-    const { data, error } = await supabase
-      .from('attendance')
-      .select('*, students(name, course, year_level)')
-      .gte('date', startDate)
-      .lte('date', endDate)
-      .order('date', { ascending: false })
-      .order('time_in', { ascending: false });
-    if (error) throw error;
+    const data = await getAttendanceForDateRange(startDate, endDate);
 
-    const rows = (data ?? []).map((record) => {
+    const rows = data.map((record) => {
       const student = record.students as { name?: string; course?: string; year_level?: number } | null;
       return {
         student_id: String(record.student_id ?? ''),
@@ -310,10 +303,9 @@ async function prepareReport(
     };
   }
 
-  const { data, error } = await supabase.from('students').select('*').order('name', { ascending: true });
-  if (error) throw error;
+  const data = await getAllStudentsForReports();
 
-  const rows = (data ?? []).map((student) => ({
+  const rows = data.map((student) => ({
     student_id: String(student.student_id ?? ''),
     name: String(student.name ?? ''),
     course: String(student.course ?? ''),

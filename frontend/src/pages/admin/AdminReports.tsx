@@ -15,7 +15,7 @@ import {
 } from 'recharts';
 import { PageLayout } from '../../components/layout/Navbar';
 import { StatCard } from '../../components/ui/StatCard';
-import { supabase } from '../../lib/supabase';
+import { getAttendanceForDateRange } from '../../lib/libraryRepository';
 
 type ReportType = 'daily' | 'weekly' | 'monthly' | 'purpose' | 'peak_hours';
 
@@ -26,15 +26,7 @@ export default function AdminReports() {
 
   const { data: stats } = useQuery({
     queryKey: ['report-stats', startDate, endDate],
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from('attendance')
-        .select('student_id, time_in, time_out, purpose, date')
-        .gte('date', startDate)
-        .lte('date', endDate);
-      if (error) throw error;
-      return data;
-    },
+    queryFn: async () => getAttendanceForDateRange(startDate, endDate),
   });
 
   const uniqueStudents = new Set(stats?.map((r) => r.student_id)).size;

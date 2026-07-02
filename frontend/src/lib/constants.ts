@@ -1,5 +1,11 @@
 export const APP_NAME = 'Library Attendance System';
 export const TIMEZONE = 'Asia/Manila';
+export const AUTO_LOGOUT_WINDOW_MINUTES = 5;
+
+export const LIBRARY_AUTO_LOGOUT_TIMES = [
+  { id: 'lunch', label: 'Lunch break', hour: 12, minute: 0, display: '12:00 PM' },
+  { id: 'closing', label: 'Library closing', hour: 17, minute: 0, display: '5:00 PM' },
+] as const;
 
 export const PURPOSES = ['Study', 'Research', 'Reading', 'Group Work', 'Other'] as const;
 

@@ -3,8 +3,8 @@ import { useLocation } from 'react-router-dom';
 import { QRCodeSVG } from 'qrcode.react';
 import { PageLayout } from '../components/layout/Navbar';
 import { Alert } from '../components/ui/Alert';
-import { supabase } from '../lib/supabase';
 import { buildQrPayload } from '../lib/constants';
+import { getStudentByStudentId } from '../lib/libraryRepository';
 import { createSvgPngObjectUrl } from '../lib/qrDownload';
 import type { Student } from '../types';
 
@@ -28,15 +28,11 @@ export default function MyQR() {
     setStudent(null);
     setQrDownloadUrl('');
 
-    const { data, error: fetchError } = await supabase
-      .from('students')
-      .select('*')
-      .eq('student_id', studentId.trim())
-      .maybeSingle();
+    const data = await getStudentByStudentId(studentId.trim());
 
     setLoading(false);
 
-    if (fetchError || !data) {
+    if (!data) {
       setError('Student ID not found. Please register first.');
       return;
     }

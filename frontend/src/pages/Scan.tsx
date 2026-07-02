@@ -1,8 +1,8 @@
 import { useCallback, useState } from 'react';
 import { QRScanner } from '../components/scanner/QRScanner';
 import { Alert } from '../components/ui/Alert';
-import { getSupabaseErrorMessage, supabase } from '../lib/supabase';
 import { PURPOSES, TIMEZONE } from '../lib/constants';
+import { getStudentByQrToken } from '../lib/libraryRepository';
 import { useProcessScan, type ScanAction } from '../hooks/useAttendance';
 import type { ScanResult, Student } from '../types';
 
@@ -80,14 +80,9 @@ export default function Scan() {
       setPurposeError('');
 
       try {
-        const { data, error } = await supabase
-          .from('students')
-          .select('*')
-          .eq('qr_token', token)
-          .eq('is_active', true)
-          .maybeSingle();
+        const data = await getStudentByQrToken(token);
 
-        if (error || !data) {
+        if (!data) {
           setResult({
             success: false,
             message: 'Invalid or unregistered QR code. Attendance was not recorded.',
@@ -104,44 +99,24 @@ export default function Scan() {
         const scanResult = await processScan.mutateAsync({
           qrToken: student.qr_token,
           action: scanAction,
+          purpose: selectedPurpose,
         });
 
-        let nextResult = scanResult;
-
-        if (scanResult.success && scanResult.action === 'time_in' && scanResult.attendance?.id) {
-          try {
-            const { data, error } = await supabase.rpc('update_attendance_purpose', {
-              p_attendance_id: scanResult.attendance.id,
-              p_purpose: selectedPurpose,
-            });
-
-            if (error) {
-              setPurposeError(error.message);
-            } else {
-              const response = data as { success?: boolean; message?: string };
-              if (!response.success) {
-                setPurposeError(response.message ?? 'Unable to save purpose.');
-              } else {
-                nextResult = {
-                  ...scanResult,
-                  message: `${scanResult.message}. Purpose: ${selectedPurpose}`,
-                  attendance: { ...scanResult.attendance, purpose: selectedPurpose },
-                };
+        const nextResult: ScanResult =
+          scanResult.success && scanResult.action === 'time_in' && scanResult.attendance
+            ? {
+                ...scanResult,
+                message: `${scanResult.message} Purpose: ${selectedPurpose}`,
+                attendance: { ...scanResult.attendance, purpose: selectedPurpose },
               }
-            }
-          } catch (error) {
-            setPurposeError(
-              getSupabaseErrorMessage(error, 'Unable to save purpose. Check your Supabase connection.'),
-            );
-          }
-        }
+            : scanResult;
 
         setResult(nextResult);
         window.setTimeout(clearScan, nextResult.success ? 6500 : 4500);
       } catch (error) {
         setResult({
           success: false,
-          message: getSupabaseErrorMessage(error, 'Unable to validate this QR code.'),
+          message: error instanceof Error ? error.message : 'Unable to validate this QR code.',
           error: 'invalid_qr',
         });
         window.setTimeout(clearScan, 3000);
