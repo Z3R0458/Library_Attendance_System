@@ -1,10 +1,13 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { QRScanner } from '../components/scanner/QRScanner';
 import { Alert } from '../components/ui/Alert';
 import { PURPOSES, TIMEZONE, type ParsedQrPayload } from '../lib/constants';
 import { getStudentByQrPayload } from '../lib/libraryRepository';
 import { useProcessScan, type ScanAction } from '../hooks/useAttendance';
 import type { ScanResult, Student } from '../types';
+
+const SAME_STUDENT_SCAN_COOLDOWN_MS = 8000;
+const RESULT_DISPLAY_MS = 2500;
 
 const SCAN_MODES: Record<ScanAction, { label: string; result: string; help: string }> = {
   time_in: {
@@ -59,7 +62,8 @@ export default function Scan() {
   const [verifiedAt, setVerifiedAt] = useState<Date | null>(null);
   const [result, setResult] = useState<ScanResult | null>(null);
   const [purposeError, setPurposeError] = useState('');
-  const [paused, setPaused] = useState(false);
+  const lastProcessedRef = useRef(new Map<string, number>());
+  const clearTimerRef = useRef<number | null>(null);
   const processScan = useProcessScan();
 
   const clearScan = useCallback(() => {
@@ -67,14 +71,37 @@ export default function Scan() {
     setVerifiedAt(null);
     setResult(null);
     setPurposeError('');
-    setPaused(false);
+  }, []);
+
+  const scheduleClearScan = useCallback(() => {
+    if (clearTimerRef.current) {
+      window.clearTimeout(clearTimerRef.current);
+    }
+    clearTimerRef.current = window.setTimeout(clearScan, RESULT_DISPLAY_MS);
+  }, [clearScan]);
+
+  useEffect(() => {
+    return () => {
+      if (clearTimerRef.current) {
+        window.clearTimeout(clearTimerRef.current);
+      }
+    };
   }, []);
 
   const handleScan = useCallback(
     async (payload: ParsedQrPayload) => {
-      if (processScan.isPending || paused) return;
+      if (processScan.isPending) return;
 
-      setPaused(true);
+      const scanKey = payload.studentId ?? payload.qrToken;
+      if (!scanKey) return;
+
+      const nowMs = Date.now();
+      const lastProcessedAt = lastProcessedRef.current.get(scanKey) ?? 0;
+      if (nowMs - lastProcessedAt < SAME_STUDENT_SCAN_COOLDOWN_MS) {
+        return;
+      }
+
+      lastProcessedRef.current.set(scanKey, nowMs);
       setResult(null);
       setPurposeError('');
 
@@ -87,7 +114,7 @@ export default function Scan() {
             message: 'Invalid or unregistered QR code. Attendance was not recorded.',
             error: 'invalid_qr',
           });
-          window.setTimeout(clearScan, 3000);
+          scheduleClearScan();
           return;
         }
 
@@ -110,17 +137,18 @@ export default function Scan() {
             : scanResult;
 
         setResult(nextResult);
-        window.setTimeout(clearScan, nextResult.success ? 6500 : 4500);
+        scheduleClearScan();
       } catch (error) {
+        lastProcessedRef.current.delete(scanKey);
         setResult({
           success: false,
           message: error instanceof Error ? error.message : 'Unable to validate this QR code.',
           error: 'invalid_qr',
         });
-        window.setTimeout(clearScan, 3000);
+        scheduleClearScan();
       }
     },
-    [clearScan, paused, processScan, selectedPurpose],
+    [processScan, scheduleClearScan, selectedPurpose],
   );
 
   return (
@@ -174,13 +202,11 @@ export default function Scan() {
             />
           )}
 
-          {!verifiedStudent && (
-            <QRScanner
-              onScan={handleScan}
-              paused={paused || processScan.isPending}
-              label="student QR code"
-            />
-          )}
+          <QRScanner
+            onScan={handleScan}
+            paused={false}
+            label="student QR code"
+          />
 
           <div style={{ marginTop: '1rem' }}>
             <Alert type="info">
