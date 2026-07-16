@@ -7,7 +7,7 @@ import { Alert } from '../../components/ui/Alert';
 import { APP_NAME } from '../../lib/constants';
 import { getAllStudentsForReports, getAttendanceForDateRange } from '../../lib/libraryRepository';
 
-type ExportType = 'attendance' | 'students';
+type ExportType = 'attendance' | 'students' | 'student_visits';
 type ExportFormat = 'pdf' | 'csv';
 type ReportRow = Record<string, string>;
 type ReportColumn = {
@@ -48,6 +48,16 @@ const studentColumns: ReportColumn[] = [
   { key: 'created_at', label: 'Registered', width: 110 },
 ];
 
+const studentVisitColumns: ReportColumn[] = [
+  { key: 'rank', label: 'Rank', width: 42 },
+  { key: 'student_id', label: 'Student ID', width: 82 },
+  { key: 'name', label: 'Name', width: 150 },
+  { key: 'course', label: 'Course', width: 56 },
+  { key: 'year_level', label: 'Year', width: 44 },
+  { key: 'total_visits', label: 'Total Visits', width: 74 },
+  { key: 'last_visit', label: 'Last Visit', width: 100 },
+];
+
 export default function AdminExport() {
   const [exportType, setExportType] = useState<ExportType>('attendance');
   const [startDate, setStartDate] = useState(format(subDays(new Date(), 30), 'yyyy-MM-dd'));
@@ -63,10 +73,13 @@ export default function AdminExport() {
   });
 
   const reportDescription = useMemo(
-    () =>
-      exportType === 'attendance'
-        ? `Attendance records from ${formatDateOnly(startDate)} to ${formatDateOnly(endDate)}`
-        : 'Complete registered student master list',
+    () => {
+      if (exportType === 'students') return 'Complete registered student master list';
+      if (exportType === 'student_visits') {
+        return `Student visit totals from ${formatDateOnly(startDate)} to ${formatDateOnly(endDate)}`;
+      }
+      return `Attendance records from ${formatDateOnly(startDate)} to ${formatDateOnly(endDate)}`;
+    },
     [exportType, startDate, endDate],
   );
 
@@ -117,9 +130,10 @@ export default function AdminExport() {
               >
                 <option value="attendance">Attendance Records</option>
                 <option value="students">Student Master List</option>
+                <option value="student_visits">Student Visit Totals</option>
               </select>
             </div>
-            {exportType === 'attendance' && (
+            {exportType !== 'students' && (
               <>
                 <div className="form-group">
                   <label className="form-label">From</label>
@@ -297,6 +311,67 @@ async function prepareReport(
       details: [
         { label: 'Report No.', value: reportCode },
         { label: 'Classification', value: 'Attendance Monitoring' },
+        { label: 'Prepared For', value: 'Library Administration' },
+        { label: 'Format', value: 'PDF / CSV' },
+      ],
+    };
+  }
+
+  if (exportType === 'student_visits') {
+    const [attendanceRows, students] = await Promise.all([
+      getAttendanceForDateRange(startDate, endDate),
+      getAllStudentsForReports(),
+    ]);
+    const studentById = new Map(students.map((student) => [student.student_id, student]));
+    const totals = new Map<string, { count: number; lastVisit: string }>();
+
+    attendanceRows.forEach((record) => {
+      const existing = totals.get(record.student_id) ?? { count: 0, lastVisit: '' };
+      const visitTime = record.time_in ?? record.created_at ?? `${record.date}T00:00:00`;
+      totals.set(record.student_id, {
+        count: existing.count + 1,
+        lastVisit: visitTime > existing.lastVisit ? visitTime : existing.lastVisit,
+      });
+    });
+
+    const rows = [...totals.entries()]
+      .map(([studentId, total]) => {
+        const studentFromAttendance = attendanceRows.find((record) => record.student_id === studentId)?.students as
+          | { name?: string; course?: string; year_level?: number }
+          | undefined;
+        const student = studentById.get(studentId);
+
+        return {
+          student_id: studentId,
+          name: student?.name ?? studentFromAttendance?.name ?? '',
+          course: student?.course ?? studentFromAttendance?.course ?? '',
+          year_level: (student?.year_level ?? studentFromAttendance?.year_level)
+            ? `Year ${student?.year_level ?? studentFromAttendance?.year_level}`
+            : '',
+          total_visits: String(total.count),
+          last_visit: formatDateTime(total.lastVisit),
+        };
+      })
+      .sort((a, b) => Number(b.total_visits) - Number(a.total_visits) || a.name.localeCompare(b.name))
+      .map((row, index) => ({ rank: String(index + 1), ...row }));
+    const reportCode = createReportCode('VIS');
+
+    return {
+      title: 'Student Visit Totals Report',
+      subtitle: `${formatDateOnly(startDate)} to ${formatDateOnly(endDate)}`,
+      reportCode,
+      filenameBase: 'library_student_visit_totals',
+      columns: studentVisitColumns,
+      rows: limit ? rows.slice(0, limit) : rows,
+      summary: [
+        { label: 'Coverage', value: `${formatDateOnly(startDate)} - ${formatDateOnly(endDate)}` },
+        { label: 'Total Visits', value: String(attendanceRows.length) },
+        { label: 'Students With Visits', value: String(rows.length) },
+        { label: 'Generated', value: format(new Date(), 'MMM d, yyyy h:mm a') },
+      ],
+      details: [
+        { label: 'Report No.', value: reportCode },
+        { label: 'Classification', value: 'Student Visit Ranking' },
         { label: 'Prepared For', value: 'Library Administration' },
         { label: 'Format', value: 'PDF / CSV' },
       ],

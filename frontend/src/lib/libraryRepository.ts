@@ -35,6 +35,13 @@ type StudentUpdateInput = Pick<Student, 'id' | 'student_id' | 'name' | 'course' 
   profileImage?: File | null;
 };
 
+export type StudentListFilters = {
+  search?: string;
+  course?: string;
+  year_level?: number | '';
+  status?: '' | 'active' | 'inactive';
+};
+
 const PAGE_SIZE = 1000;
 
 function isNetworkUnavailable(error: unknown) {
@@ -188,12 +195,27 @@ export async function getStudentByQrPayload(payload: ParsedQrPayload) {
   return student?.is_active ? student : null;
 }
 
-export async function listStudents(page: number, pageSize: number) {
+export async function listStudents(page: number, pageSize: number, filters: StudentListFilters = {}) {
+  const search = filters.search?.trim().toLowerCase() ?? '';
   const students = await getLocalStudents();
-  const rows = students
+  const filteredStudents = students.filter((student) => {
+    const matchesSearch =
+      !search ||
+      student.student_id.toLowerCase().includes(search) ||
+      student.name.toLowerCase().includes(search);
+    const matchesCourse = !filters.course || student.course === filters.course;
+    const matchesYear = !filters.year_level || student.year_level === filters.year_level;
+    const matchesStatus =
+      !filters.status ||
+      (filters.status === 'active' && student.is_active) ||
+      (filters.status === 'inactive' && !student.is_active);
+
+    return matchesSearch && matchesCourse && matchesYear && matchesStatus;
+  });
+  const rows = filteredStudents
     .sort((a, b) => b.created_at.localeCompare(a.created_at))
     .slice(page * pageSize, page * pageSize + pageSize);
-  return { rows, count: students.length };
+  return { rows, count: filteredStudents.length, totalCount: students.length };
 }
 
 export async function processQrScan(payload: ParsedQrPayload, purpose = 'Study') {
@@ -442,7 +464,21 @@ async function pushQueueItem(item: SyncQueueItem) {
 
     const student = await getLocalStudent(item.recordId);
     if (!student) return;
-    const { error } = await supabase.from('students').upsert(student, { onConflict: 'id' });
+
+    const { data: existingStudent, error: lookupError } = await supabase
+      .from('students')
+      .select('id')
+      .eq('id', item.recordId)
+      .maybeSingle();
+    if (lookupError) throw lookupError;
+
+    if (existingStudent) {
+      const { error } = await supabase.from('students').update(student).eq('id', item.recordId);
+      if (error) throw error;
+      return;
+    }
+
+    const { error } = await supabase.from('students').insert(student);
     if (error) throw error;
     return;
   }
