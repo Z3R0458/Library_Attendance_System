@@ -5,6 +5,7 @@ Modern library attendance system with QR code check-in/out, built with React, Vi
 ## Features
 
 - Student registration with auto-generated unique QR codes
+- Student profile pictures stored outside Supabase Storage to avoid database-project bandwidth drain
 - Offline QR scanner that automatically detects login/logout using today's local attendance record
 - Duplicate scan prevention in the camera workflow
 - Admin dashboard for today's visitors, current visitors, and live attendance
@@ -47,11 +48,31 @@ Edit `frontend/.env`:
 VITE_SUPABASE_URL=https://YOUR_PROJECT.supabase.co
 VITE_SUPABASE_ANON_KEY=your-anon-key
 VITE_OFFLINE_DATABASE_SECRET=use-a-long-random-secret-for-local-encryption
+VITE_CLOUDINARY_CLOUD_NAME=your-cloudinary-cloud-name
+VITE_CLOUDINARY_UPLOAD_PRESET=your-unsigned-upload-preset
+VITE_CLOUDINARY_FOLDER=library-student-profiles
 ```
 
 Find these values in Supabase > Project Settings > API.
 
 `VITE_OFFLINE_DATABASE_SECRET` is optional. If it is not set, the browser generates a local AES key and stores it on that device.
+
+Profile pictures are uploaded to Cloudinary from the browser, then only the returned image URL is stored in the Supabase `students.profile_picture_url` column. Create an unsigned Cloudinary upload preset in Cloudinary > Settings > Upload, set the preset name in `VITE_CLOUDINARY_UPLOAD_PRESET`, then redeploy the frontend after changing environment variables.
+
+### Migrating Existing Supabase Storage Photos
+
+If your old student photos are still reachable in the public `student-profile-pictures` bucket, migrate them before disabling the old bucket:
+
+```powershell
+$env:SUPABASE_URL="https://YOUR_PROJECT.supabase.co"
+$env:SUPABASE_SERVICE_ROLE_KEY="your-service-role-key"
+$env:CLOUDINARY_CLOUD_NAME="your-cloudinary-cloud-name"
+$env:CLOUDINARY_UPLOAD_PRESET="your-unsigned-upload-preset"
+$env:CLOUDINARY_FOLDER="library-student-profiles"
+npm run migrate:profile-images
+```
+
+The script downloads each old Supabase Storage photo, uploads it to Cloudinary, and updates `students.profile_picture_url` to the Cloudinary URL. After migration, run `supabase/migrations/011_disable_supabase_profile_storage.sql` in Supabase SQL Editor to disable the old public Storage policies and bucket access. If Supabase egress is already fully blocked, skip the script for now and have admins re-upload student photos through Student Management after Cloudinary is configured.
 
 ### 4. Install and Run
 
@@ -138,7 +159,7 @@ Synchronization pushes queued changes to Supabase with stable UUID primary keys,
 - The status badge shows pending queued changes and can be clicked to retry sync.
 - The app shell is cached by `frontend/public/offline-sw.js` after the first successful load.
 - Admin login still requires one online Supabase login on a device. After that, the cached Supabase session can continue to open admin tools while offline.
-- Profile images selected while offline are stored as local data URLs so registration can finish immediately.
+- Profile image uploads require an internet connection because image bytes are sent to external image storage instead of being queued into Supabase.
 
 ### Recovery Notes
 

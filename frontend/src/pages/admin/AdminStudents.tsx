@@ -6,6 +6,7 @@ import { Alert } from '../../components/ui/Alert';
 import { listStudents, removeStudent, updateStudent } from '../../lib/libraryRepository';
 import { COURSE_OPTIONS, YEAR_LEVELS } from '../../lib/constants';
 import {
+  getDisplayableProfileImageUrl,
   getProfileImageErrorMessage,
   validateProfileImage,
 } from '../../lib/profileImages';
@@ -216,7 +217,7 @@ function StudentRow({
     setProfilePreviewUrl(URL.createObjectURL(file));
   };
 
-  const photoUrl = profilePreviewUrl || student.profile_picture_url;
+  const photoUrl = profilePreviewUrl || getDisplayableProfileImageUrl(student.profile_picture_url);
 
   return (
     <tr>

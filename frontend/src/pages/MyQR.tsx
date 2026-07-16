@@ -5,6 +5,7 @@ import { PageLayout } from '../components/layout/Navbar';
 import { Alert } from '../components/ui/Alert';
 import { buildQrPayload } from '../lib/constants';
 import { getStudentByStudentId } from '../lib/libraryRepository';
+import { getDisplayableProfileImageUrl } from '../lib/profileImages';
 import { createSvgPngObjectUrl } from '../lib/qrDownload';
 import type { Student } from '../types';
 
@@ -18,6 +19,7 @@ export default function MyQR() {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const [qrDownloadUrl, setQrDownloadUrl] = useState('');
+  const profilePictureUrl = getDisplayableProfileImageUrl(student?.profile_picture_url);
 
   const lookup = async (e?: FormEvent) => {
     e?.preventDefault();
@@ -109,10 +111,10 @@ export default function MyQR() {
 
             {student && (
               <div className="qr-display">
-                {student.profile_picture_url && (
+                {profilePictureUrl && (
                   <img
                     className="student-profile-large"
-                    src={student.profile_picture_url}
+                    src={profilePictureUrl}
                     alt={`${student.name} profile`}
                   />
                 )}

@@ -1,10 +1,15 @@
-import { supabase } from './supabase';
-
-export const PROFILE_IMAGE_BUCKET = 'student-profile-pictures';
-
 const MAX_SIDE = 640;
 const JPEG_QUALITY = 0.72;
 const IMAGE_EXTENSION_PATTERN = /\.(avif|gif|heic|heif|jpe?g|png|webp)$/i;
+const LEGACY_SUPABASE_PROFILE_BUCKET = 'student-profile-pictures';
+
+type CloudinaryUploadResponse = {
+  secure_url?: string;
+  url?: string;
+  error?: {
+    message?: string;
+  };
+};
 
 export function validateProfileImage(file: File): string | null {
   const hasImageType = file.type.startsWith('image/');
@@ -98,10 +103,44 @@ function createUploadFile(blob: Blob, studentId: string): Blob {
   }
 }
 
+function getCloudinaryConfig() {
+  const cloudName = String(import.meta.env.VITE_CLOUDINARY_CLOUD_NAME ?? '').trim();
+  const uploadPreset = String(import.meta.env.VITE_CLOUDINARY_UPLOAD_PRESET ?? '').trim();
+  const folder = String(import.meta.env.VITE_CLOUDINARY_FOLDER ?? '').trim();
+
+  if (!cloudName || !uploadPreset) {
+    throw new Error(
+      'External profile image storage is not configured. Set VITE_CLOUDINARY_CLOUD_NAME and VITE_CLOUDINARY_UPLOAD_PRESET in frontend/.env, then redeploy.',
+    );
+  }
+
+  return { cloudName, uploadPreset, folder };
+}
+
+function isCloudinaryUploadError(value: unknown): value is CloudinaryUploadResponse {
+  return Boolean(value && typeof value === 'object' && 'error' in value);
+}
+
+export function isLegacySupabaseProfileImageUrl(value?: string | null): boolean {
+  const url = value?.trim().toLowerCase();
+  if (!url) return false;
+
+  return (
+    url.includes('.supabase.co/storage/v1/object/') &&
+    url.includes(`/${LEGACY_SUPABASE_PROFILE_BUCKET.toLowerCase()}/`)
+  );
+}
+
+export function getDisplayableProfileImageUrl(value?: string | null): string | null {
+  const url = value?.trim();
+  if (!url || isLegacySupabaseProfileImageUrl(url)) return null;
+  return url;
+}
+
 export function getProfileImageErrorMessage(error: unknown): string {
   if (error instanceof Error) {
     if (error.message === 'Failed to fetch') {
-      return 'Unable to upload the profile picture. Please check your internet connection, then make sure the Supabase Storage bucket and deployed Vercel environment variables are configured.';
+      return 'Unable to upload the profile picture. Please check your internet connection and Cloudinary image storage settings.';
     }
 
     if (error.message.includes('Unable to read')) {
@@ -115,19 +154,29 @@ export function getProfileImageErrorMessage(error: unknown): string {
 }
 
 export async function uploadStudentProfileImage(file: File, studentId: string): Promise<string> {
+  const { cloudName, uploadPreset, folder } = getCloudinaryConfig();
   const compressed = await resizeProfileImage(file);
   const uploadFile = createUploadFile(compressed, studentId);
-  const path = `${safePathPart(studentId)}/${createUploadId()}.jpg`;
+  const formData = new FormData();
 
-  const { error } = await supabase.storage
-    .from(PROFILE_IMAGE_BUCKET)
-    .upload(path, uploadFile, {
-      contentType: 'image/jpeg',
-      upsert: false,
-    });
+  formData.append('file', uploadFile);
+  formData.append('upload_preset', uploadPreset);
+  formData.append('public_id', `${safePathPart(studentId)}-${createUploadId()}`);
+  if (folder) formData.append('folder', folder);
 
-  if (error) throw error;
+  const response = await fetch(`https://api.cloudinary.com/v1_1/${cloudName}/image/upload`, {
+    method: 'POST',
+    body: formData,
+  });
+  const result = (await response.json().catch(() => ({}))) as CloudinaryUploadResponse;
 
-  const { data } = supabase.storage.from(PROFILE_IMAGE_BUCKET).getPublicUrl(path);
-  return data.publicUrl;
+  if (!response.ok) {
+    const detail = isCloudinaryUploadError(result) ? result.error?.message : undefined;
+    throw new Error(detail ? `Unable to upload the profile picture: ${detail}` : 'Unable to upload the profile picture.');
+  }
+
+  const publicUrl = result.secure_url ?? result.url;
+  if (!publicUrl) throw new Error('Cloudinary did not return a profile picture URL.');
+
+  return publicUrl;
 }

@@ -6,7 +6,11 @@ import { Alert } from '../components/ui/Alert';
 import { buildQrPayload, COURSE_OPTIONS, YEAR_LEVELS } from '../lib/constants';
 import { registerStudent } from '../lib/libraryRepository';
 import { createSvgPngObjectUrl } from '../lib/qrDownload';
-import { getProfileImageErrorMessage, validateProfileImage } from '../lib/profileImages';
+import {
+  getDisplayableProfileImageUrl,
+  getProfileImageErrorMessage,
+  validateProfileImage,
+} from '../lib/profileImages';
 import {
   normalizeStudentName,
 } from '../lib/studentValidation';
@@ -29,6 +33,7 @@ export default function Register() {
   const [profilePreviewUrl, setProfilePreviewUrl] = useState('');
   const [form, setForm] = useState(initialRegistrationForm);
   const profileInputRef = useRef<HTMLInputElement | null>(null);
+  const registeredProfilePictureUrl = getDisplayableProfileImageUrl(registeredStudent?.profile_picture_url);
 
   useEffect(() => {
     return () => {
@@ -303,10 +308,10 @@ export default function Register() {
                 level="H"
                 includeMargin
               />
-              {registeredStudent.profile_picture_url && (
+              {registeredProfilePictureUrl && (
                 <img
                   className="qr-modal-photo"
-                  src={registeredStudent.profile_picture_url}
+                  src={registeredProfilePictureUrl}
                   alt={`${registeredStudent.name} profile`}
                 />
               )}

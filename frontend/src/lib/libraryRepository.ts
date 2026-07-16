@@ -56,27 +56,14 @@ function todayInLibraryTimezone() {
   return `${valueOf('year')}-${valueOf('month')}-${valueOf('day')}`;
 }
 
-async function fileToDataUrl(file: File) {
-  return new Promise<string>((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(String(reader.result ?? ''));
-    reader.onerror = () => reject(reader.error ?? new Error('Unable to read profile image.'));
-    reader.readAsDataURL(file);
-  });
-}
-
 async function resolveProfilePictureUrl(input: StudentInput | StudentUpdateInput) {
   if (!input.profileImage) return 'profile_picture_url' in input ? input.profile_picture_url ?? null : undefined;
 
-  if (navigator.onLine) {
-    try {
-      return await uploadStudentProfileImage(input.profileImage, input.student_id);
-    } catch (error) {
-      if (!isNetworkUnavailable(error)) throw error;
-    }
+  if (!navigator.onLine) {
+    throw new Error('An internet connection is required to upload profile pictures to external image storage.');
   }
 
-  return fileToDataUrl(input.profileImage);
+  return uploadStudentProfileImage(input.profileImage, input.student_id);
 }
 
 function normalizeRemoteStudent(row: Record<string, unknown>): Student {
