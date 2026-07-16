@@ -4,6 +4,7 @@
 
 ALTER TABLE public.students ENABLE ROW LEVEL SECURITY;
 
+GRANT USAGE ON SCHEMA public TO anon, authenticated;
 GRANT SELECT, INSERT, UPDATE, DELETE ON public.students TO authenticated;
 GRANT SELECT, INSERT ON public.students TO anon;
 
@@ -13,12 +14,12 @@ DROP POLICY IF EXISTS "Admins manage students" ON public.students;
 
 CREATE POLICY "Anyone can register students"
   ON public.students FOR INSERT
-  TO anon, authenticated
+  TO public
   WITH CHECK (true);
 
 CREATE POLICY "Anyone can read students"
   ON public.students FOR SELECT
-  TO anon, authenticated
+  TO public
   USING (true);
 
 CREATE POLICY "Admins manage students"

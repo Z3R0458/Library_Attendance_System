@@ -1,4 +1,4 @@
-const CACHE_NAME = 'library-attendance-app-v1';
+const CACHE_NAME = 'library-attendance-app-v2';
 const APP_SHELL = ['/', '/index.html', '/favicon.svg', '/icons.svg'];
 
 self.addEventListener('install', (event) => {
