@@ -1,15 +1,10 @@
-import { useState, type ChangeEvent, type FormEvent } from 'react';
+import { useState, type FormEvent } from 'react';
 import { Link } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { PageLayout } from '../../components/layout/Navbar';
 import { Alert } from '../../components/ui/Alert';
 import { listStudents, removeStudent, updateStudent, type StudentListFilters } from '../../lib/libraryRepository';
 import { COURSE_OPTIONS, YEAR_LEVELS } from '../../lib/constants';
-import {
-  getDisplayableProfileImageUrl,
-  getProfileImageErrorMessage,
-  validateProfileImage,
-} from '../../lib/profileImages';
 import {
   isDuplicateStudentIdError,
   isDuplicateStudentNameError,
@@ -53,11 +48,7 @@ export default function AdminStudents() {
   };
 
   const updateMutation = useMutation({
-    mutationFn: async (
-      student: Pick<Student, 'id' | 'student_id' | 'name' | 'course' | 'year_level'> & {
-        profileImage?: File | null;
-      },
-    ) => {
+    mutationFn: async (student: Pick<Student, 'id' | 'student_id' | 'name' | 'course' | 'year_level'>) => {
       const studentId = student.student_id.trim();
       const normalizedName = normalizeStudentName(student.name);
 
@@ -79,7 +70,6 @@ export default function AdminStudents() {
         name: normalizedName,
         course: student.course,
         year_level: student.year_level,
-        profileImage: student.profileImage,
       });
     },
     onMutate: () => {
@@ -96,7 +86,9 @@ export default function AdminStudents() {
           ? 'Student ID already exists.'
           : isDuplicateStudentNameError(err)
             ? 'Student name already exists.'
-            : getProfileImageErrorMessage(err),
+            : err instanceof Error
+              ? err.message
+              : 'Unable to update student.',
       );
     },
   });
@@ -215,7 +207,6 @@ export default function AdminStudents() {
                     <thead>
                       <tr>
                         <th>Student ID</th>
-                        <th>Photo</th>
                         <th>Name</th>
                         <th>Course</th>
                         <th>Year</th>
@@ -263,11 +254,7 @@ function StudentRow({
   onDelete,
 }: {
   student: Student;
-  onUpdate: (
-    s: Pick<Student, 'id' | 'student_id' | 'name' | 'course' | 'year_level'> & {
-      profileImage?: File | null;
-    },
-  ) => void;
+  onUpdate: (s: Pick<Student, 'id' | 'student_id' | 'name' | 'course' | 'year_level'>) => void;
   onDelete: () => void;
 }) {
   const [edit, setEdit] = useState({
@@ -276,37 +263,6 @@ function StudentRow({
     course: student.course,
     year_level: student.year_level,
   });
-  const [profileImage, setProfileImage] = useState<File | null>(null);
-  const [profilePreviewUrl, setProfilePreviewUrl] = useState('');
-  const [imageError, setImageError] = useState('');
-
-  const handleProfileImageChange = (e: ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0] ?? null;
-    setImageError('');
-
-    if (profilePreviewUrl) {
-      URL.revokeObjectURL(profilePreviewUrl);
-      setProfilePreviewUrl('');
-    }
-
-    if (!file) {
-      setProfileImage(null);
-      return;
-    }
-
-    const validationError = validateProfileImage(file);
-    if (validationError) {
-      setProfileImage(null);
-      e.target.value = '';
-      setImageError(validationError);
-      return;
-    }
-
-    setProfileImage(file);
-    setProfilePreviewUrl(URL.createObjectURL(file));
-  };
-
-  const photoUrl = profilePreviewUrl || getDisplayableProfileImageUrl(student.profile_picture_url);
 
   return (
     <tr>
@@ -318,22 +274,6 @@ function StudentRow({
           onChange={(e) => setEdit({ ...edit, student_id: e.target.value })}
           style={{ minWidth: 120 }}
         />
-      </td>
-      <td data-label="Photo">
-        <div className="student-photo-cell">
-          {photoUrl ? (
-            <a href={photoUrl} target="_blank" rel="noreferrer" aria-label={`View ${student.name} profile picture`}>
-              <img className="student-photo-thumb" src={photoUrl} alt={`${student.name} profile`} />
-            </a>
-          ) : (
-            <div className="student-photo-thumb placeholder">No Photo</div>
-          )}
-          <label className="btn btn-secondary file-button">
-            Update
-            <input type="file" accept="image/jpeg,image/png,image/webp,image/*" onChange={handleProfileImageChange} />
-          </label>
-          {imageError && <span className="field-error">{imageError}</span>}
-        </div>
       </td>
       <td data-label="Name">
         <input
@@ -370,7 +310,7 @@ function StudentRow({
           type="button"
           className="btn btn-maroon"
           style={{ padding: '0.4rem 0.75rem', fontSize: '0.8rem' }}
-          onClick={() => onUpdate({ id: student.id, ...edit, profileImage })}
+          onClick={() => onUpdate({ id: student.id, ...edit })}
         >
           Save
         </button>{' '}

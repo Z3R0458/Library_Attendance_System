@@ -4,7 +4,6 @@ export interface Student {
   name: string;
   course: string;
   year_level: number;
-  profile_picture_url: string | null;
   qr_token: string;
   qr_issued_at: string;
   is_active: boolean;
@@ -24,7 +23,7 @@ export interface Attendance {
 }
 
 export interface AttendanceWithStudent extends Attendance {
-  students?: Pick<Student, 'name' | 'course' | 'year_level' | 'profile_picture_url'>;
+  students?: Pick<Student, 'name' | 'course' | 'year_level'>;
 }
 
 export interface ScanResult {
@@ -37,7 +36,6 @@ export interface ScanResult {
     name: string;
     course?: string;
     year_level?: number;
-    profile_picture_url?: string | null;
   };
   attendance?: {
     id: string;

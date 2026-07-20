@@ -1,7 +1,7 @@
 import { createClient } from '@supabase/supabase-js';
 
-const DEFAULT_SUPABASE_URL = 'https://lfqhqknugvndpxkweymt.supabase.co';
-const DEFAULT_SUPABASE_KEY = 'sb_publishable_qTjepshFfP72xC8EuF2rLw_BXZ4DKvd';
+const DEFAULT_SUPABASE_URL = 'https://ozptnxtqjiutsiyetyac.supabase.co';
+const DEFAULT_SUPABASE_KEY = 'sb_publishable_2oIiXaaLJ0JGQQzWjm4RKg_akT2gShG';
 
 function cleanEnvValue(value: unknown): string {
   return String(value ?? '')

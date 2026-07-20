@@ -23,10 +23,9 @@ export interface SyncQueueItem {
   updated_at: string;
 }
 
-type StoredStudent = Omit<Student, 'name' | 'course' | 'profile_picture_url'> & {
+type StoredStudent = Omit<Student, 'name' | 'course'> & {
   name: string;
   course: string;
-  profile_picture_url: string | null;
 };
 
 type StoredAttendance = Omit<Attendance, 'purpose'> & {
@@ -203,7 +202,6 @@ async function toStoredStudent(student: Student): Promise<StoredStudent> {
     ...student,
     name: (await encryptNullable(student.name)) ?? '',
     course: (await encryptNullable(student.course)) ?? '',
-    profile_picture_url: await encryptNullable(student.profile_picture_url),
   };
 }
 
@@ -212,7 +210,6 @@ async function fromStoredStudent(student: StoredStudent): Promise<Student> {
     ...student,
     name: (await decryptNullable(student.name)) ?? '',
     course: (await decryptNullable(student.course)) ?? '',
-    profile_picture_url: await decryptNullable(student.profile_picture_url),
   };
 }
 
@@ -357,7 +354,6 @@ export async function getLocalAttendanceWithStudents(): Promise<AttendanceWithSt
             name: student.name,
             course: student.course,
             year_level: student.year_level,
-            profile_picture_url: student.profile_picture_url,
           }
         : undefined,
     };

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type ChangeEvent, type FormEvent } from 'react';
+import { useEffect, useState, type FormEvent } from 'react';
 import { Link } from 'react-router-dom';
 import { QRCodeSVG } from 'qrcode.react';
 import { PageLayout } from '../components/layout/Navbar';
@@ -6,14 +6,7 @@ import { Alert } from '../components/ui/Alert';
 import { buildQrPayload, COURSE_OPTIONS, YEAR_LEVELS } from '../lib/constants';
 import { registerStudent } from '../lib/libraryRepository';
 import { createSvgPngObjectUrl } from '../lib/qrDownload';
-import {
-  getDisplayableProfileImageUrl,
-  getProfileImageErrorMessage,
-  validateProfileImage,
-} from '../lib/profileImages';
-import {
-  normalizeStudentName,
-} from '../lib/studentValidation';
+import { normalizeStudentName } from '../lib/studentValidation';
 import type { Student } from '../types';
 
 const initialRegistrationForm = {
@@ -29,43 +22,7 @@ export default function Register() {
   const [registeredStudent, setRegisteredStudent] = useState<Student | null>(null);
   const [showQrModal, setShowQrModal] = useState(false);
   const [qrDownloadUrl, setQrDownloadUrl] = useState('');
-  const [profileImage, setProfileImage] = useState<File | null>(null);
-  const [profilePreviewUrl, setProfilePreviewUrl] = useState('');
   const [form, setForm] = useState(initialRegistrationForm);
-  const profileInputRef = useRef<HTMLInputElement | null>(null);
-  const registeredProfilePictureUrl = getDisplayableProfileImageUrl(registeredStudent?.profile_picture_url);
-
-  useEffect(() => {
-    return () => {
-      if (profilePreviewUrl) URL.revokeObjectURL(profilePreviewUrl);
-    };
-  }, [profilePreviewUrl]);
-
-  const handleProfileImageChange = (e: ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0] ?? null;
-    setError('');
-
-    if (profilePreviewUrl) {
-      URL.revokeObjectURL(profilePreviewUrl);
-      setProfilePreviewUrl('');
-    }
-
-    if (!file) {
-      setProfileImage(null);
-      return;
-    }
-
-    const validationError = validateProfileImage(file);
-    if (validationError) {
-      setProfileImage(null);
-      e.target.value = '';
-      setError(validationError);
-      return;
-    }
-
-    setProfileImage(file);
-    setProfilePreviewUrl(URL.createObjectURL(file));
-  };
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
@@ -85,12 +42,6 @@ export default function Register() {
       return;
     }
 
-    if (!profileImage) {
-      setError('Profile picture is required.');
-      setLoading(false);
-      return;
-    }
-
     if (!COURSE_OPTIONS.includes(course as (typeof COURSE_OPTIONS)[number])) {
       setError('Please select a valid course.');
       setLoading(false);
@@ -103,22 +54,13 @@ export default function Register() {
         name: normalizedName,
         course: course.trim(),
         year_level,
-        profileImage,
       });
 
       setRegisteredStudent(newStudent as Student);
       setShowQrModal(true);
       setForm(initialRegistrationForm);
-      setProfileImage(null);
-      if (profilePreviewUrl) {
-        URL.revokeObjectURL(profilePreviewUrl);
-        setProfilePreviewUrl('');
-      }
-      if (profileInputRef.current) {
-        profileInputRef.current.value = '';
-      }
-    } catch (error) {
-      setError(getProfileImageErrorMessage(error));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Registration failed.');
     } finally {
       setLoading(false);
     }
@@ -244,27 +186,6 @@ export default function Register() {
                 </div>
               </div>
 
-              <div className="form-group">
-                <label className="form-label" htmlFor="profile_picture">Profile Picture</label>
-                <input
-                  id="profile_picture"
-                  ref={profileInputRef}
-                  type="file"
-                  className="form-control"
-                  accept="image/jpeg,image/png,image/webp,image/*"
-                  onChange={handleProfileImageChange}
-                />
-                <p className="form-help">
-                  Choose a photo from Gallery, Photos, Files, or Camera when your phone asks.
-                </p>
-                {profilePreviewUrl && (
-                  <div className="profile-upload-preview">
-                    <img src={profilePreviewUrl} alt="Profile preview" />
-                    <span>{profileImage?.name}</span>
-                  </div>
-                )}
-              </div>
-
               <button type="submit" className="btn btn-maroon" style={{ width: '100%' }} disabled={loading}>
                 {loading ? 'Registering...' : 'Register Account'}
               </button>
@@ -308,13 +229,6 @@ export default function Register() {
                 level="H"
                 includeMargin
               />
-              {registeredProfilePictureUrl && (
-                <img
-                  className="qr-modal-photo"
-                  src={registeredProfilePictureUrl}
-                  alt={`${registeredStudent.name} profile`}
-                />
-              )}
               <p>
                 {registeredStudent.student_id} | {registeredStudent.course} | Year{' '}
                 {registeredStudent.year_level}

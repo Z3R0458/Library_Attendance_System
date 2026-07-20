@@ -23,17 +23,11 @@ import {
   type SyncQueueItem,
 } from './offlineDatabase';
 import { getSupabaseErrorMessage, supabase } from './supabase';
-import { uploadStudentProfileImage } from './profileImages';
 import type { Attendance, AttendanceWithStudent, DashboardStats, ScanResult, Student } from '../types';
 
-type StudentInput = Pick<Student, 'student_id' | 'name' | 'course' | 'year_level'> & {
-  profileImage?: File | null;
-  profile_picture_url?: string | null;
-};
+type StudentInput = Pick<Student, 'student_id' | 'name' | 'course' | 'year_level'>;
 
-type StudentUpdateInput = Pick<Student, 'id' | 'student_id' | 'name' | 'course' | 'year_level'> & {
-  profileImage?: File | null;
-};
+type StudentUpdateInput = Pick<Student, 'id' | 'student_id' | 'name' | 'course' | 'year_level'>;
 
 export type StudentListFilters = {
   search?: string;
@@ -63,16 +57,6 @@ function todayInLibraryTimezone() {
   return `${valueOf('year')}-${valueOf('month')}-${valueOf('day')}`;
 }
 
-async function resolveProfilePictureUrl(input: StudentInput | StudentUpdateInput) {
-  if (!input.profileImage) return 'profile_picture_url' in input ? input.profile_picture_url ?? null : undefined;
-
-  if (!navigator.onLine) {
-    throw new Error('An internet connection is required to upload profile pictures to external image storage.');
-  }
-
-  return uploadStudentProfileImage(input.profileImage, input.student_id);
-}
-
 function normalizeRemoteStudent(row: Record<string, unknown>): Student {
   return {
     id: String(row.id),
@@ -80,7 +64,6 @@ function normalizeRemoteStudent(row: Record<string, unknown>): Student {
     name: String(row.name),
     course: String(row.course),
     year_level: Number(row.year_level),
-    profile_picture_url: (row.profile_picture_url as string | null | undefined) ?? null,
     qr_token: String(row.qr_token),
     qr_issued_at: String(row.qr_issued_at),
     is_active: Boolean(row.is_active),
@@ -122,14 +105,12 @@ export async function registerStudent(input: StudentInput) {
   if (existingByName) throw new Error('Student name already exists.');
 
   const now = new Date().toISOString();
-  const profilePictureUrl = await resolveProfilePictureUrl(input);
   const student: Student = {
     id: createUuid(),
     student_id: input.student_id,
     name: input.name,
     course: input.course,
     year_level: input.year_level,
-    profile_picture_url: profilePictureUrl ?? null,
     qr_token: createUuid(),
     qr_issued_at: now,
     is_active: true,
@@ -156,14 +137,12 @@ export async function updateStudent(input: StudentUpdateInput) {
   );
   if (duplicateName) throw new Error('Student name already exists.');
 
-  const profilePictureUrl = await resolveProfilePictureUrl(input);
   const student: Student = {
     ...existing,
     student_id: input.student_id,
     name: input.name,
     course: input.course,
     year_level: input.year_level,
-    profile_picture_url: profilePictureUrl ?? existing.profile_picture_url,
   };
 
   await putLocalStudent(student, true);

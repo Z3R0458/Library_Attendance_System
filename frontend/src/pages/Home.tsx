@@ -27,8 +27,8 @@ export default function Home() {
         <div className="container">
           <h1>Library Attendance System</h1>
           <p>
-            Register online before visiting the library, upload your profile picture, and keep
-            your QR code ready for fast attendance verification.
+            Register online before visiting the library and keep your QR code ready for fast
+            attendance verification.
           </p>
           <div className="hero-actions">
             <Link to="/register" className="btn btn-primary">
@@ -46,7 +46,7 @@ export default function Home() {
           <div className="feature-card">
             <div className="feature-icon">ID</div>
             <h3>Student Registration</h3>
-            <p>Submit your student details and profile picture to generate your unique QR code.</p>
+            <p>Submit your student details to generate your unique QR code.</p>
             <Link to="/register" className="btn btn-maroon">Register Now</Link>
           </div>
           <div className="feature-card">

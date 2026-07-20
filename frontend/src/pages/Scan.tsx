@@ -3,7 +3,6 @@ import { QRScanner } from '../components/scanner/QRScanner';
 import { Alert } from '../components/ui/Alert';
 import { PURPOSES, TIMEZONE, type ParsedQrPayload } from '../lib/constants';
 import { getStudentByQrPayload, processQrScan } from '../lib/libraryRepository';
-import { getDisplayableProfileImageUrl } from '../lib/profileImages';
 import type { ScanAction } from '../hooks/useAttendance';
 import type { ScanResult, Student } from '../types';
 
@@ -237,7 +236,6 @@ function VerificationCard({
   result: ScanResult | null;
   recording: boolean;
 }) {
-  const profilePictureUrl = getDisplayableProfileImageUrl(student.profile_picture_url);
   const isRecorded = Boolean(result?.success);
   const isError = Boolean(result && !result.success);
   const statusText = isRecorded
@@ -250,18 +248,6 @@ function VerificationCard({
 
   return (
     <div className={`verification-card${isRecorded ? ' recorded' : ''}${isError ? ' failed' : ''}`}>
-      <div className="verification-photo-wrap">
-        {profilePictureUrl ? (
-          <img
-            className="verification-photo"
-            src={profilePictureUrl}
-            alt={`${student.name} profile`}
-          />
-        ) : (
-          <div className="verification-photo placeholder">No Photo</div>
-        )}
-      </div>
-
       <div className="verification-details">
         <div className="verification-title-row">
           <div>
