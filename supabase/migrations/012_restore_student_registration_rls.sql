@@ -14,12 +14,12 @@ DROP POLICY IF EXISTS "Admins manage students" ON public.students;
 
 CREATE POLICY "Anyone can register students"
   ON public.students FOR INSERT
-  TO public
+  TO anon, authenticated
   WITH CHECK (true);
 
 CREATE POLICY "Anyone can read students"
   ON public.students FOR SELECT
-  TO public
+  TO anon, authenticated
   USING (true);
 
 CREATE POLICY "Admins manage students"

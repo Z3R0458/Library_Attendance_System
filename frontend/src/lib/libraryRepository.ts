@@ -58,16 +58,19 @@ function todayInLibraryTimezone() {
 }
 
 function normalizeRemoteStudent(row: Record<string, unknown>): Student {
+  const rawQr = (row as any).qr_token ?? (row as any).qrToken ?? (row as any).token ?? null;
+  const rawQrIssued = (row as any).qr_issued_at ?? (row as any).qrIssuedAt ?? null;
+
   return {
     id: String(row.id),
-    student_id: String(row.student_id),
-    name: String(row.name),
-    course: String(row.course),
-    year_level: Number(row.year_level),
-    qr_token: String(row.qr_token),
-    qr_issued_at: String(row.qr_issued_at),
-    is_active: Boolean(row.is_active),
-    created_at: String(row.created_at),
+    student_id: String(row.student_id ?? ''),
+    name: String(row.name ?? ''),
+    course: String(row.course ?? ''),
+    year_level: Number(row.year_level ?? 0),
+    qr_token: rawQr ? String(rawQr) : createUuid(),
+    qr_issued_at: rawQrIssued ? String(rawQrIssued) : new Date().toISOString(),
+    is_active: Boolean((row as any).is_active ?? (row as any).isActive ?? true),
+    created_at: String(row.created_at ?? new Date().toISOString()),
   };
 }
 
@@ -83,6 +86,82 @@ function normalizeRemoteAttendance(row: Record<string, unknown>): Attendance {
     last_scan_at: (row.last_scan_at as string | null | undefined) ?? null,
     created_at: String(row.created_at),
   };
+}
+
+async function getRemoteStudentByStudentId(studentId: string) {
+  if (!navigator.onLine) return null;
+
+  const { data, error } = await supabase
+    .from('students')
+    .select('*')
+    .eq('student_id', studentId)
+    .maybeSingle();
+
+  if (error) {
+    console.warn(getSupabaseErrorMessage(error, 'Unable to look up student in Supabase.'));
+    return null;
+  }
+
+  if (!data) return null;
+  const student = normalizeRemoteStudent(data as Record<string, unknown>);
+  await putLocalStudent(student, false);
+  return student;
+}
+
+async function getRemoteStudentByQrToken(qrToken: string) {
+  if (!navigator.onLine) return null;
+
+  const { data, error } = await supabase
+    .from('students')
+    .select('*')
+    .eq('qr_token', qrToken)
+    .maybeSingle();
+
+  if (error) {
+    console.warn(getSupabaseErrorMessage(error, 'Unable to look up QR token in Supabase.'));
+    return null;
+  }
+
+  if (!data) return null;
+  const student = normalizeRemoteStudent(data as Record<string, unknown>);
+  await putLocalStudent(student, false);
+  return student;
+}
+
+async function pushStudentRecordToSupabase(student: Student) {
+  const { data: existingStudent, error: lookupError } = await supabase
+    .from('students')
+    .select('id')
+    .eq('id', student.id)
+    .maybeSingle();
+  if (lookupError) throw lookupError;
+
+  if (existingStudent) {
+    const { error } = await supabase.from('students').update(student).eq('id', student.id);
+    if (error) throw error;
+    return;
+  }
+
+  const { error } = await supabase.from('students').insert(student);
+  if (error) throw error;
+}
+
+async function pushAttendanceRecordToSupabase(attendance: Attendance) {
+  const { data: existingAttendance, error: lookupError } = await supabase
+    .from('attendance')
+    .select('id')
+    .eq('id', attendance.id)
+    .maybeSingle();
+  if (lookupError) throw lookupError;
+
+  if (existingAttendance) {
+    const { error } = await supabase.from('attendance').update(attendance).eq('id', attendance.id);
+    if (error) throw error;
+    return;
+  }
+
+  const { error } = await supabase.from('attendance').insert(attendance);
+  if (error) throw error;
 }
 
 export async function warmLocalCache() {
@@ -105,9 +184,11 @@ export async function registerStudent(input: StudentInput) {
   if (existingByName) throw new Error('Student name already exists.');
 
   const now = new Date().toISOString();
+  const studentIdClean = String(input.student_id ?? '').trim();
+
   const student: Student = {
     id: createUuid(),
-    student_id: input.student_id,
+    student_id: studentIdClean,
     name: input.name,
     course: input.course,
     year_level: input.year_level,
@@ -117,8 +198,13 @@ export async function registerStudent(input: StudentInput) {
     created_at: now,
   };
 
-  await putLocalStudent(student, true);
-  void syncOfflineQueue();
+  if (navigator.onLine) {
+    await pushStudentRecordToSupabase(student);
+    await putLocalStudent(student, false);
+  } else {
+    await putLocalStudent(student, true);
+  }
+
   return student;
 }
 
@@ -156,22 +242,40 @@ export async function removeStudent(id: string) {
 }
 
 export async function getStudentByStudentId(studentId: string) {
-  return getLocalStudentByStudentId(studentId);
+  const normalizedStudentId = String(studentId ?? '').trim();
+  const localStudent = await getLocalStudentByStudentId(normalizedStudentId);
+  if (localStudent?.is_active) return localStudent;
+  const remoteStudent = await getRemoteStudentByStudentId(normalizedStudentId);
+  return remoteStudent?.is_active ? remoteStudent : null;
 }
 
 export async function getStudentByQrToken(qrToken: string) {
-  const student = await getLocalStudentByQrToken(qrToken);
-  return student?.is_active ? student : null;
+  const token = String(qrToken ?? '').trim();
+  const localStudent = await getLocalStudentByQrToken(token);
+  if (localStudent?.is_active) return localStudent;
+  const remoteStudent = await getRemoteStudentByQrToken(token);
+  return remoteStudent?.is_active ? remoteStudent : null;
 }
 
 export async function getStudentByQrPayload(payload: ParsedQrPayload) {
-  const student = payload.studentId
-    ? await getLocalStudentByStudentId(payload.studentId)
-    : payload.qrToken
-      ? await getLocalStudentByQrToken(payload.qrToken)
+  const studentId = payload.studentId ? String(payload.studentId).trim() : undefined;
+  const qrToken = payload.qrToken ? String(payload.qrToken).trim() : undefined;
+
+  const localStudent = studentId
+    ? await getLocalStudentByStudentId(studentId)
+    : qrToken
+      ? await getLocalStudentByQrToken(qrToken)
       : null;
 
-  return student?.is_active ? student : null;
+  if (localStudent?.is_active) return localStudent;
+
+  const remoteStudent = studentId
+    ? await getRemoteStudentByStudentId(studentId)
+    : qrToken
+      ? await getRemoteStudentByQrToken(qrToken)
+      : null;
+
+  return remoteStudent?.is_active ? remoteStudent : null;
 }
 
 export async function listStudents(page: number, pageSize: number, filters: StudentListFilters = {}) {
@@ -443,29 +547,13 @@ async function pushQueueItem(item: SyncQueueItem) {
 
     const student = await getLocalStudent(item.recordId);
     if (!student) return;
-
-    const { data: existingStudent, error: lookupError } = await supabase
-      .from('students')
-      .select('id')
-      .eq('id', item.recordId)
-      .maybeSingle();
-    if (lookupError) throw lookupError;
-
-    if (existingStudent) {
-      const { error } = await supabase.from('students').update(student).eq('id', item.recordId);
-      if (error) throw error;
-      return;
-    }
-
-    const { error } = await supabase.from('students').insert(student);
-    if (error) throw error;
+    await pushStudentRecordToSupabase(student);
     return;
   }
 
   const attendance = await getLocalAttendance(item.recordId);
   if (!attendance) return;
-  const { error } = await supabase.from('attendance').upsert(attendance, { onConflict: 'id' });
-  if (error) throw error;
+  await pushAttendanceRecordToSupabase(attendance);
 }
 
 async function pullRemoteData() {

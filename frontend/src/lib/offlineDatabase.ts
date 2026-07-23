@@ -254,10 +254,21 @@ export async function putLocalStudent(student: Student, enqueue = false) {
 export async function putLocalStudents(students: Student[]) {
   const stored = await Promise.all(students.map(toStoredStudent));
   const db = await openOfflineDb();
-  const transaction = db.transaction('students', 'readwrite');
-  const store = transaction.objectStore('students');
-  stored.forEach((student) => store.put(student));
-  await transactionDone(transaction);
+
+  // Write each student in its own transaction so a single problematic record
+  // (duplicate unique index, corrupt data) doesn't abort the entire batch.
+  for (const student of stored) {
+    try {
+      const transaction = db.transaction('students', 'readwrite');
+      transaction.objectStore('students').put(student);
+      await transactionDone(transaction);
+    } catch (err) {
+      // Ignore individual student write errors but log for diagnostics.
+      // This prevents one bad remote row from preventing others being stored.
+      // eslint-disable-next-line no-console
+      console.warn('Failed to store remote student locally', err, student.id);
+    }
+  }
 }
 
 export async function getLocalStudent(id: string) {
@@ -270,12 +281,14 @@ export async function getLocalStudent(id: string) {
 }
 
 export async function getLocalStudentByStudentId(studentId: string) {
-  const stored = await getByIndex<StoredStudent>('students', 'student_id', studentId);
+  const key = String(studentId ?? '').trim();
+  const stored = await getByIndex<StoredStudent>('students', 'student_id', key);
   return stored ? fromStoredStudent(stored) : null;
 }
 
 export async function getLocalStudentByQrToken(qrToken: string) {
-  const stored = await getByIndex<StoredStudent>('students', 'qr_token', qrToken);
+  const key = String(qrToken ?? '').trim();
+  const stored = await getByIndex<StoredStudent>('students', 'qr_token', key);
   return stored ? fromStoredStudent(stored) : null;
 }
 
